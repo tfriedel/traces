@@ -931,25 +931,25 @@ static int format_typed_params(trace_parser_t *parser, struct trace_parser_buffe
             }
         }
         
-        if (param->flags & TRACE_PARAM_FLAG_NUM_8 && !(param->flags & TRACE_PARAM_FLAG_VARRAY)) {
+        if (param->flags & TRACE_PARAM_FLAG_NUM_8 && !(param->flags & TRACE_PARAM_FLAG_VARRAY) && !(param->flags & TRACE_PARAM_FLAG_FP)) {
             if (describe_params) {
                 SIMPLE_APPEND_FORMATTED_TEXT(F_CYAN_BOLD("<char>"));
                 SIMPLE_APPEND_FORMATTED_TEXT(ANSI_DEFAULTS(""));
             } else {
-                WRITE_SIMPLE_PDATA_VALUE("%hh", "%hhu", "%08hhx", "0x%hhx", unsigned char);
+                WRITE_SIMPLE_PDATA_VALUE("%hhd", "%hhu", "%08hhx", "0x%hhx", unsigned char);
             }
         }
         
-        if (param->flags & TRACE_PARAM_FLAG_NUM_16 && !(param->flags & TRACE_PARAM_FLAG_VARRAY)) {
+        if (param->flags & TRACE_PARAM_FLAG_NUM_16 && !(param->flags & TRACE_PARAM_FLAG_VARRAY) && !(param->flags & TRACE_PARAM_FLAG_FP)) {
             if (describe_params) {
                 SIMPLE_APPEND_FORMATTED_TEXT(F_CYAN_BOLD("<short>"));
                 SIMPLE_APPEND_FORMATTED_TEXT(ANSI_DEFAULTS(""));
             } else {
-                WRITE_SIMPLE_PDATA_VALUE("%h", "%hu", "%08hx", "0x%hx", unsigned short);
+                WRITE_SIMPLE_PDATA_VALUE("%hd", "%hu", "%08hx", "0x%hx", unsigned short);
             }
         }
 
-        if (param->flags & TRACE_PARAM_FLAG_NUM_32 && !(param->flags & TRACE_PARAM_FLAG_VARRAY)) {
+        if (param->flags & TRACE_PARAM_FLAG_NUM_32 && !(param->flags & TRACE_PARAM_FLAG_VARRAY) && !(param->flags & TRACE_PARAM_FLAG_FP)) {
             if (describe_params) {
                 SIMPLE_APPEND_FORMATTED_TEXT(F_CYAN_BOLD("<int>"));
                 SIMPLE_APPEND_FORMATTED_TEXT(ANSI_DEFAULTS(""));
@@ -958,7 +958,7 @@ static int format_typed_params(trace_parser_t *parser, struct trace_parser_buffe
             }
         }
 
-        if (param->flags & TRACE_PARAM_FLAG_NUM_64 && !(param->flags & TRACE_PARAM_FLAG_VARRAY)) {
+        if (param->flags & TRACE_PARAM_FLAG_NUM_64 && !(param->flags & TRACE_PARAM_FLAG_VARRAY) && !(param->flags & TRACE_PARAM_FLAG_FP)) {
             if (describe_params) {
                 SIMPLE_APPEND_FORMATTED_TEXT(F_CYAN_BOLD("<long long>"));
                 SIMPLE_APPEND_FORMATTED_TEXT(ANSI_DEFAULTS(""));
@@ -967,12 +967,20 @@ static int format_typed_params(trace_parser_t *parser, struct trace_parser_buffe
             }
         }
 
-        if (param->flags & TRACE_PARAM_FLAG_DOUBLE) {
+        if (param->flags & TRACE_PARAM_FLAG_FP) {
             if (describe_params) {
-                SIMPLE_APPEND_FORMATTED_TEXT(F_CYAN_BOLD("<double>"));
+                if (param->flags & TRACE_PARAM_FLAG_NUM_64) {
+                    SIMPLE_APPEND_FORMATTED_TEXT(F_CYAN_BOLD("<double>"));
+                } else {
+                    SIMPLE_APPEND_FORMATTED_TEXT(F_CYAN_BOLD("<float>"));
+                }
                 SIMPLE_APPEND_FORMATTED_TEXT(ANSI_DEFAULTS(""));
             } else {
-                WRITE_SIMPLE_PDATA_VALUE("%f", "%f", "%016a", "0x%a", double);
+                if (param->flags & TRACE_PARAM_FLAG_NUM_64) {
+                    WRITE_SIMPLE_PDATA_VALUE("%f", "%f", "%016a", "0x%a", double);
+                } else {
+                    WRITE_SIMPLE_PDATA_VALUE("%f", "%f", "%016a", "0x%a", float);
+                }
             }
         }
 

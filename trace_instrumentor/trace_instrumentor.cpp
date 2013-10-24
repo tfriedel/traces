@@ -155,23 +155,6 @@ bool TraceParam::parseBasicTypeParam(QualType qual_type)
         return false;
     }
 
-    const BuiltinType *BT = qual_type->getAs<BuiltinType>();
-    if (BT->getKind() == BuiltinType::Double) {
-        size = ast.getTypeSize(type) / 8;
-        type_name = QualType(qual_type.split().Ty, 0).getAsString();
-        flags |= TRACE_PARAM_FLAG_DOUBLE;
-        return true; 
-    }
-    
-
-    if (!type->isIntegerType()) {
-        return false;
-    }
-
-    if (!type->isSignedIntegerType()) {
-        flags |= TRACE_PARAM_FLAG_UNSIGNED;
-    }
-
     switch (ast.getTypeSize(type)) {
     case 8:
         flags |= TRACE_PARAM_FLAG_NUM_8;
@@ -187,6 +170,23 @@ bool TraceParam::parseBasicTypeParam(QualType qual_type)
         break;
     default:
         return false;
+    }
+
+    const BuiltinType *BT = qual_type->getAs<BuiltinType>();
+    //if (BT->getKind() == BuiltinType::Double) {
+    if (BT->isFloatingPoint()) {
+        size = ast.getTypeSize(type) / 8;
+        type_name = QualType(qual_type.split().Ty, 0).getAsString();
+        flags |= TRACE_PARAM_FLAG_FP;
+        return true; 
+    }
+
+    if (!type->isIntegerType()) {
+        return false;
+    }
+
+    if (!type->isSignedIntegerType()) {
+        flags |= TRACE_PARAM_FLAG_UNSIGNED;
     }
 
     size = ast.getTypeSize(type) / 8;

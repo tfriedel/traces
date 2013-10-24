@@ -150,8 +150,8 @@ TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, 
         if (flags & TRACE_PARAM_FLAG_NESTED_LOG) {
             trace_flags << " | TRACE_PARAM_FLAG_NESTED_LOG";
         }
-        if (flags & TRACE_PARAM_FLAG_DOUBLE) {
-            trace_flags << " | TRACE_PARAM_FLAG_DOUBLE";
+        if (flags & TRACE_PARAM_FLAG_FP) {
+            trace_flags << " | TRACE_PARAM_FLAG_FP";
         }
 
         return trace_flags.str();
@@ -180,7 +180,7 @@ TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, 
         }
     }
     bool isSimple() {
-        if (flags & (TRACE_PARAM_FLAG_ENUM | TRACE_PARAM_FLAG_NUM_8 | TRACE_PARAM_FLAG_NUM_16 | TRACE_PARAM_FLAG_NUM_32 | TRACE_PARAM_FLAG_NUM_64 | TRACE_PARAM_FLAG_DOUBLE) && !(flags & TRACE_PARAM_FLAG_VARRAY)) {
+        if (flags & (TRACE_PARAM_FLAG_ENUM | TRACE_PARAM_FLAG_NUM_8 | TRACE_PARAM_FLAG_NUM_16 | TRACE_PARAM_FLAG_NUM_32 | TRACE_PARAM_FLAG_NUM_64 | TRACE_PARAM_FLAG_FP ) && !(flags & TRACE_PARAM_FLAG_VARRAY)) {
             return true;
         } else {
             return false;
