@@ -1,5 +1,6 @@
 /***
 Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
+          2013 Thomas Friedel <thomas.friedel (_!at!_) gmaildotcom>
    Sponsored by infinidat (http://infinidat.com)
    
    Licensed under the Apache License, Version 2.0 (the "License");

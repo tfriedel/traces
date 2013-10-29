@@ -49,6 +49,7 @@ def translate(
     arch_triplet,
     cflags,
     ):
+
     if language == 'c++':
         args = [
             clang_path,
@@ -95,6 +96,61 @@ def translate(
     return 0
 
 
+def translate_no_gcc(
+    pp_file,
+    out_pp_file,
+    language,
+    arch_triplet,
+    cflags,
+    ):
+
+    if language == 'c++':
+        args = [
+            clang_path,
+            '-w',
+            '-Wno-attributes',
+            '-fcolor-diagnostics',
+            '-fsyntax-only',
+            '-fgnu-keywords',
+            '-x',
+            'c++',
+            '-fcxx-exceptions',
+            ]
+    else:
+        args = [
+            clang_path,
+            '-w',
+            '-Wno-attributes',
+            '-fcolor-diagnostics',
+            '-fsyntax-only',
+            '-fgnu-keywords',
+            '-std=gnu99',
+            ]
+
+    args.extend(arch_triplet)
+    args.extend(cflags)
+    args.extend([
+        '-Xclang',
+        '-load',
+        '-Xclang',
+        plugin_path,
+        '-Xclang',
+        '-plugin',
+        '-Xclang',
+        'trace-instrument',
+        ])
+    try:
+        print 'running clang :', " ".join(args)        
+        output = subprocess.check_output(args, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError, e:
+        print 'clang returned', e.returncode
+        print 'Args:', ' '.join(args)
+        print 'Output:', e.output
+        return 1
+
+    return 0
+
+
 class UnsupportedTarget(Exception):
 
     pass
@@ -123,9 +179,26 @@ def maybe_translate(
     arch_triplet,
     cflags,
     ):
+
     try:
         return translate(pp_file, out_pp_file, language, arch_triplet,
                          cflags)
+    except Error, e:
+        print e.args[0]
+        return -1
+
+
+def maybe_translate_no_gcc(
+    pp_file,
+    out_pp_file,
+    language,
+    arch_triplet,
+    cflags,
+    ):
+
+    try:
+        return translate_no_gcc(pp_file, out_pp_file, language,
+                                arch_triplet, cflags)
     except Error, e:
         print e.args[0]
         return -1
@@ -150,6 +223,7 @@ def handle_dependency_option(
     o_index,
     o_file,
     ):
+
     new_args = args[::]
     uses_dependency_option = False
     arg_mapping = {'-MMD': '-MM', '-MD': '-M'}
@@ -165,42 +239,6 @@ def handle_dependency_option(
 
     if uses_dependency_option:
         spawn(new_args)
-
-TRACES_PROGRAM_START_MARKER = '//TRACES_PROGRAM_START_MARKER\n'
-def postProcess(filename, outputfilename):
-    f = open(filename, 'r')
-    lines = f.readlines()
-    f.close()
-
-    lineNo = 0
-    markedLineNo = -1
-    for line in lines:
-        if line.startswith(TRACES_PROGRAM_START_MARKER[:-1]):
-            markedLineNo = lineNo
-            break
-        lineNo += 1
-    if markedLineNo >= 0:
-        lines = lines[markedLineNo:]    
-    # write output
-    with open(outputfilename, 'w') as f:
-        f.writelines(lines)
-    
-def preProcess(filename, outputfilename):
-    f = open(filename, 'r')
-    lines = f.readlines()
-    f.close()
-
-    lastIncludeLineNo = 0
-    for line in lines:
-        if line.startswith('#include'):
-            lastIncludeLineNo += 1
-
-    lines.insert(lastIncludeLineNo, TRACES_PROGRAM_START_MARKER)
-
-    # write output
-
-    with open(outputfilename, 'w') as f:
-        f.writelines(lines)    
 
 def main():
     args = sys.argv[1:]
@@ -232,12 +270,10 @@ def main():
         pp_file = o_file + '.pp'
         cpp_args[o_index] = pp_file
 
-    #preprocess c++ file, insert marker after include statements
-    orig_c_file = c_file
-    c_file = pp_file + ".pre.cpp"
-    preProcess(orig_c_file, c_file)
-    cpp_args[c_index] = c_file
-
+    outputdir = os.path.join(os.path.split(os.path.abspath(o_file))[0],"transformed")
+    if not os.path.exists(outputdir):
+        os.mkdir(outputdir)
+    output_c_file = os.path.join(outputdir, os.path.basename(c_file))
     handle_dependency_option(cpp_args, c_index, o_index, o_file)
     source_data = file(c_file).read()
     if 'ANDROID_SINGLETON_STATIC_INSTANCE' in source_data:
@@ -246,8 +282,7 @@ def main():
     # Hack for dealing with sources that use _GNU_SOURCE
 
     if '#define _GNU_SOURCE' in source_data:
-        cpp_args.extend(['-w', '-D', '_GNU_SOURCE'])
-    cpp_args.extend(['-C'])
+        cpp_args.extend(['-w', '-D', '_GNU_SOURCE'])    
     cflags = get_cflags(args)
     if p.endswith('cpp'):
         language = 'c++'
@@ -264,7 +299,13 @@ def main():
 
     out_pp_file = pp_file + '.i'
     print cpp_args
-    ret = spawn(cpp_args)
+    clang_args = cpp_args[1:]
+    #clang_args[clang_args.index('-E')] = '-c'        
+    clang_args[clang_args.index(pp_file)] = output_c_file
+    cpp_args.extend(['-C'])        
+    maybe_translate_no_gcc(c_file, out_pp_file + '.out', language,
+                           get_arch_triplet(args[0]), clang_args)    
+    ret = spawn(cpp_args)    
     if ret:
         return ret
     clang_ret = 0
@@ -284,8 +325,7 @@ def main():
         comp_args[c_index] = out_pp_file
         print comp_args
         ret = spawn(comp_args)
-        postProcess(out_pp_file, c_file)
-        return ret        
+        return ret
     finally:
 
         # os.unlink(pp_file)
@@ -294,12 +334,9 @@ def main():
 
             # Delete the pp.i file only if the clang invocation was successful
 
-            if clang_ret == 0:
-                pass
-
-
-                # os.unlink(out_pp_file)
-                os.unlink
+            if clang_ret == 0:                
+                os.unlink(out_pp_file)
+                
 
 if __name__ == '__main__':
     sys.exit(main())
