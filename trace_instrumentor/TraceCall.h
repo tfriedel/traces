@@ -241,13 +241,14 @@ TraceCall(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, R
     
     bool method_generated;
     std::string trace_call_name;
-    
+    std::vector<TraceParam> args;
+
 private:
     ASTContext &ast;
     DiagnosticsEngine &Diags;
     llvm::raw_ostream &Out;
     const CallExpr *call_expr;
-    std::vector<TraceParam> args;
+
     enum trace_severity severity;
     const char *kind;
     Rewriter *Rewrite;
@@ -267,7 +268,7 @@ private:
     std::string getTypeDefinitionExternDeclratations();
     std::string genMIN(std::string &a, std::string &b);
     
-    std::string constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, unsigned int size, unsigned int *buf_left);
+    std::string constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, unsigned int size);
     std::string constlength_commitAndAllocateRecord(enum trace_severity severity, unsigned int *buf_left);
     std::string constlength_getRecord(enum trace_severity severity);
     std::string constlength_initializeTypedRecord(enum trace_severity severity, unsigned int *buf_left);
@@ -282,7 +283,7 @@ private:
     void unknownTraceParam(const Expr *trace_param);
 
 
-    std::string constlength_getTraceWriteExpression(unsigned int *buf_left);
+    std::string constlength_getTraceWriteExpression();
     std::string constlength_getFullTraceWriteExpression();
 
     std::string varlength_getTraceWriteExpression();

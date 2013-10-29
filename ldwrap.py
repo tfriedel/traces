@@ -1,4 +1,4 @@
-#!/bin/env python2.7
+#!/usr/bin/env python2.7
 # Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #    Sponsored by infinidat (http://infinidat.com)
 #   
@@ -143,7 +143,7 @@ def get_linker_script(linker_direct, args):
 def set_linker_script_filename(linker_direct, linker_script, xargs):
     if linker_direct:
         xargs.append('-T')
-        xargs.append(script_file)
+        xargs.append(linker_script)
         return
 
     for index, arg in enumerate(xargs):

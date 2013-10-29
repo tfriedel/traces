@@ -41,6 +41,13 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <vector>
 #include <set>
 
+#define TRACE_LOG std::string("std::cout ")
+#define TRACING_ENABLED std::string("true")
+#define TRACE_FUNC_ENTRY std::string("std::cout << \"enter:  "+ trace_call.args[0].const_str +"\" << std::endl;")
+//#define TRACE_FUNC_ENTRY std::string("std::cout << \"enter:  "+ trace_call.args[0].const_str +"\";")
+#define TRACE_FUNC_LEAVE std::string("")
+#define TRACE_ENDL std::string(" << std::endl; ")
+
 using namespace clang;
 
 namespace {
@@ -297,7 +304,7 @@ std::string TraceCall::getTraceDeclaration()
     std::string flags;
     std::string str;
     std::string param_name;
-    std::string type_id;
+    std::string type_id;    
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];
         param_name = "0";
@@ -509,6 +516,7 @@ std::string TraceCall::varlength_getTraceWriteExpression()
     
 std::string TraceCall::varlength_getFullTraceWriteExpression()
 {
+    /*
     std::stringstream get_record;
     std::stringstream start_record;
     std::stringstream trace_record_payload;
@@ -527,10 +535,15 @@ std::string TraceCall::varlength_getFullTraceWriteExpression()
     start_record << varlength_commitRecord();
 
     return get_record.str() + start_record.str();
+    */
+    std::stringstream log_stmts;
+    log_stmts << TRACE_LOG << varlength_getTraceWriteExpression();
+    return log_stmts.str();
 }
 
 std::string TraceCall::constlength_getFullTraceWriteExpression()
 {
+    /*
     std::stringstream get_record;
     std::stringstream start_record;
     std::stringstream trace_record_payload;
@@ -542,16 +555,22 @@ std::string TraceCall::constlength_getFullTraceWriteExpression()
     start_record << constlength_getTraceWriteExpression(&buf_left);
     start_record << "_record.termination |= TRACE_TERMINATION_LAST;";
     start_record << constlength_commitRecord();
-
-    return get_record.str() + start_record.str();
+    */
+    std::stringstream log_stmts;
+    std::string traceWriteExpression = constlength_getTraceWriteExpression();
+    if (traceWriteExpression.size() > 3) {
+        //@todo line above is dirty hack
+        log_stmts << TRACE_LOG << traceWriteExpression << TRACE_ENDL;
+    }
+    return log_stmts.str();
 }
 
     
-std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, unsigned int value_size, unsigned int *buf_left)
+std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, unsigned int value_size)
 {
     std::stringstream serialized;
-
-    serialized << "{";
+/*
+    serialized << "{";    
     if (is_pointer) {
         serialized << "volatile const void * __src__ =  " << castTo(ast.getLangOpts(), expression, "volatile const void *") << ";";
     } else if (is_reference) {
@@ -573,6 +592,12 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std
     }
 
     serialized << "}";
+    */
+    // "expression: " << expression;
+    if (!is_reference && !is_pointer) {
+        serialized << " << \"" << expression << ": \" << " << expression << "<<\"; \"";
+    }
+    //@todo handle pointers, references etc
     return serialized.str();
 }
 
@@ -606,40 +631,47 @@ std::string TraceCall::varlength_writeSimpleValue(std::string &expression, std::
     return serialized.str();
 }
 
-std::string TraceCall::constlength_getTraceWriteExpression(unsigned int *buf_left)
+std::string TraceCall::constlength_getTraceWriteExpression()
 {
     std::stringstream start_record;
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];
         
-        if (param.isSimple()) {
-            start_record << constlength_writeSimpleValue(param.expression, param.type_name, param.is_pointer, param.is_reference, param.size, buf_left);
+        if (param.isSimple() || param.isVarString()) {
+            start_record << constlength_writeSimpleValue(param.expression, param.type_name, param.is_pointer, param.is_reference, param.size);
             continue;
         }
-    }
 
+        if (param.isBuffer()) {
+            start_record << " << \"" << param.expression << ": \"" << "[buffer]";
+            // @todo implement buffer output correctly
+        }
+    }    
     return start_record.str();
 }
 
 std::string TraceCall::getExpansion() {
+    return constlength_getFullTraceWriteExpression();
+    /*
     if (constantSizeTrace()) {
         return getTraceDeclaration() + constlength_getFullTraceWriteExpression();
     } else {
         return getTraceDeclaration() + varlength_getFullTraceWriteExpression();
     }
+    */
 }
 
 void TraceCall::expand()
 {
     std::string declaration = getTraceDeclaration();
     std::string trace_write_expression = varlength_getFullTraceWriteExpression();
-    replaceExpr(call_expr, "{" + declaration + "if (current_trace_buffer != 0){"  + trace_write_expression + "}}");    
+    replaceExpr(call_expr, "{" + declaration + "if ("+TRACING_ENABLED+"){"  + trace_write_expression + "}}");
 }
 
 void TraceCall::expandWithoutDeclaration()
 {
     std::string trace_write_expression = varlength_getTraceWriteExpression();
-    replaceExpr(call_expr, "if (current_trace_buffer != 0){"  + trace_write_expression + "}");    
+    replaceExpr(call_expr, "if ("+TRACING_ENABLED+"){"  + trace_write_expression + "}");
 }
 
 
@@ -1230,7 +1262,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D) {
         trace_call.setSeverity(severity);
         trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
         trace_call.addTraceParam(function_name_param);
-        Rewrite->ReplaceText(endLocation, 1, "{if (current_trace_buffer != 0) {trace_decrement_nesting_level(); " + trace_call.getExpansion() + "}}}");
+        Rewrite->ReplaceText(endLocation, 1, "{if ("+TRACING_ENABLED+") {trace_decrement_nesting_level(); "+TRACE_FUNC_LEAVE + trace_call.getExpansion() + "}}}");
     }
     
     for (FunctionDecl::param_const_iterator I = D->param_begin(),
@@ -1251,7 +1283,10 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D) {
     }
 
 
-    Rewrite->InsertText(function_start, "if (current_trace_buffer != 0){" + trace_call.getExpansion() + "trace_increment_nesting_level();}", true);
+    Rewrite->InsertText(function_start, "if ("+TRACING_ENABLED+"){" +
+                        TRACE_FUNC_ENTRY +
+                        trace_call.getExpansion() +
+                        "trace_increment_nesting_level(); }", true);
 exit:
     stmtiterator.Visit(D->getBody());
 }
@@ -1650,7 +1685,7 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
 expand:
    std::string traceExpansion = trace_call.getExpansion();
    Rewrite->InsertText(onePastSemiLoc, "}", true);
-   Rewrite->ReplaceText(startLoc, 6, "{if (current_trace_buffer != 0) {trace_decrement_nesting_level(); " + traceExpansion + "} return ");
+   Rewrite->ReplaceText(startLoc, 6, "{if ("+TRACING_ENABLED+") {trace_decrement_nesting_level(); " + TRACE_LOG + " << \" return: \"; " + traceExpansion + "} return ");
    return;
 }
 
