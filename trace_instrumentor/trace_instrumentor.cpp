@@ -40,14 +40,25 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <string>
 #include <iostream>
 #include <vector>
+#include <string>
 #include <set>
 
-#define TRACE_LOG std::string("std::cout ")
+#define TRACE_LOG std::string("std::cout << std::string(4*trace_get_nesting_level(), ' ')")
 #define TRACING_ENABLED std::string("true")
-#define TRACE_FUNC_ENTRY std::string("std::cout << \"enter:  "+ trace_call.args[0].const_str +"\" << std::endl;")
-//#define TRACE_FUNC_ENTRY std::string("std::cout << \"enter:  "+ trace_call.args[0].const_str +"\";")
-#define TRACE_FUNC_LEAVE std::string("")
 #define TRACE_ENDL std::string(" << std::endl; ")
+
+#define TRACE_FUNC_ENTRY(logText) "if ("+TRACING_ENABLED+"){" + \
+TRACE_LOG + std::string("<< \"--> ") + trace_call.args[0].const_str \
++ std::string("(\" << ") +logText+std::string("<< \")\"") + TRACE_ENDL + \
+"trace_increment_nesting_level(); }"
+
+
+//#define TRACE_FUNC_ENTRY std::string("std::cout << \"enter:  "+ trace_call.args[0].const_str +"\";")
+//#define TRACE_FUNC_LEAVE(logText) TRACE_LOG + std::string("<< \"<-- "+ logText +"\" << std::endl;")
+
+#define TRACE_FUNC_LEAVE(logText) "{if ("+TRACING_ENABLED+") {trace_decrement_nesting_level(); " + \
+    TRACE_LOG + std::string("<< \"<-- ")+ std::string("(\"") + logText +std::string("<< \")\"") + TRACE_ENDL + "} return "
+
 
 using namespace clang;
 
@@ -79,7 +90,36 @@ static const Type *get_expr_type(const Expr *expr)
      }
      return result;
  }
-    
+
+ /** converts string s to an escaped string where all special chars like ", \t
+  *  are escaped */
+ static std::string escapeString(std::string const& s) {
+    std::stringstream b;
+    //b << "\"";
+    for (std::string::const_iterator i = s.begin(), end = s.end(); i != end; ++i) {
+        unsigned char c = *i;
+        if (' ' <= c and c <= '~' and c != '\\' and c != '"') {
+            b << c;
+        } else {
+            b << "\\";
+            switch(c) {
+            case '"':  b << "\"";  break;
+            case '\\': b << "\\"; break;
+            case '\t': b << "t";  break;
+            case '\r': b << "r";  break;
+            case '\n': b << "n";  break;
+            default:
+              char const* const hexdig = "0123456789ABCDEF";
+              b << "x";
+              b << hexdig[c >> 4];
+              b << hexdig[c & 0xF];
+            }
+        }
+    }
+    //b << "\"";
+    return b.str();
+ }
+
 static std::string normalizeTypeName(std::string type_str) {
     std::string replaced = replaceAll(type_str, " ", "_");
     return replaceAll(replaced, ":", "_");
@@ -559,11 +599,14 @@ std::string TraceCall::constlength_getFullTraceWriteExpression()
     */
     std::stringstream log_stmts;
     std::string traceWriteExpression = constlength_getTraceWriteExpression();
+    return traceWriteExpression;
+    /*
     if (traceWriteExpression.size() > 3) {
         //@todo line above is dirty hack
         log_stmts << TRACE_LOG << traceWriteExpression << TRACE_ENDL;
     }
     return log_stmts.str();
+    */
 }
 
     
@@ -596,7 +639,12 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std
     */
     // "expression: " << expression;
     if (!is_reference && !is_pointer) {
-        serialized << " << \"" << expression << ": \" << " << expression << "<<\"; \"";
+        //serialized << expression << ": \" << (" << expression << ") << \" \" << \"";
+        serialized << "\"" << escapeString(expression) << ": \"" << " << (" << expression << ")";
+    } else if (is_reference) {
+        serialized << "\"" << escapeString(expression) << ": \"" << " << (" << "\"[reference]\"" << ")";
+    } else if (is_pointer) {
+        serialized << "\"" << escapeString(expression) << ": \"" << " << (" << "\"[pointer]\"" << ")";
     }
     //@todo handle pointers, references etc
     return serialized.str();
@@ -635,19 +683,51 @@ std::string TraceCall::varlength_writeSimpleValue(std::string &expression, std::
 std::string TraceCall::constlength_getTraceWriteExpression()
 {
     std::stringstream start_record;
+    std::vector<std::string> parameters;
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];
-        
+
         if (param.isSimple() || param.isVarString()) {
-            start_record << constlength_writeSimpleValue(param.expression, param.type_name, param.is_pointer, param.is_reference, param.size);
+             parameters.push_back(
+                         constlength_writeSimpleValue(param.expression, param.type_name,
+                                                      param.is_pointer, param.is_reference, param.size)
+                         );
             continue;
         }
 
         if (param.isBuffer()) {
+            start_record.str("");
             start_record << " << \"" << param.expression << ": \"" << "[buffer]";
+            parameters.push_back(start_record.str());
             // @todo implement buffer output correctly
         }
-    }    
+
+    }
+    // clear
+    start_record.str("");
+    int i = 0;
+    bool empty=true;
+    for (std::vector<std::string>::iterator it = parameters.begin() ; it != parameters.end(); ++it, ++i) {
+        // dirty hack
+        /*
+        if ((*it).size()>2) {
+            start_record << *it;
+            empty = false;
+            if (i < parameters.size()-1) {
+                start_record << "<< \", \" << ";
+            }
+        }
+        */
+        start_record << *it;
+        empty = false;
+        if (i < parameters.size()-1) {
+            start_record << "<< \", \" << ";
+        }
+
+    }
+    if (empty) {
+        start_record << "\"\"";
+    }
     return start_record.str();
 }
 
@@ -1078,6 +1158,13 @@ static bool shouldInstrumentFunctionDecl(const FunctionDecl *D, bool whitelistEx
 {
     if (D->isInlined()) {
         return false;
+        if (!(D->isCXXClassMember() || D->isCXXInstanceMember())) {
+            return false;
+        }
+        if (D->isTrivial() || D->isHidden() || D->isRecord() || D->hasTrivialBody()) {
+            return false;
+        }
+        // @todo: is this function defined in namespace std
     }
     
     if (whitelistExceptions) {
@@ -1263,7 +1350,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D) {
         trace_call.setSeverity(severity);
         trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
         trace_call.addTraceParam(function_name_param);
-        Rewrite->ReplaceText(endLocation, 1, "{if ("+TRACING_ENABLED+") {trace_decrement_nesting_level(); "+TRACE_FUNC_LEAVE + trace_call.getExpansion() + "}}}");
+        Rewrite->ReplaceText(endLocation, 1, std::string("{if (")+TRACING_ENABLED+std::string(") {trace_decrement_nesting_level(); ")+TRACE_FUNC_LEAVE(trace_call.getExpansion()) + std::string("}}}"));
     }
     
     for (FunctionDecl::param_const_iterator I = D->param_begin(),
@@ -1284,10 +1371,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D) {
     }
 
 
-    Rewrite->InsertText(function_start, "if ("+TRACING_ENABLED+"){" +
-                        TRACE_FUNC_ENTRY +
-                        trace_call.getExpansion() +
-                        "trace_increment_nesting_level(); }", true);
+    Rewrite->InsertText(function_start, TRACE_FUNC_ENTRY(trace_call.getExpansion()) , true);
 exit:
     stmtiterator.Visit(D->getBody());
 }
@@ -1683,10 +1767,9 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
         VisitStmt(S);
     }
 
-expand:
-   std::string traceExpansion = trace_call.getExpansion();
-   Rewrite->InsertText(onePastSemiLoc, "}", true);
-   Rewrite->ReplaceText(startLoc, 6, "{if ("+TRACING_ENABLED+") {trace_decrement_nesting_level(); " + TRACE_LOG + " << \" return: \"; " + traceExpansion + "} return ");
+expand:   
+   Rewrite->InsertText(onePastSemiLoc, "}", true);   
+   Rewrite->ReplaceText(startLoc, 6,  TRACE_FUNC_LEAVE(trace_call.getExpansion()));
    return;
 }
 
@@ -2598,8 +2681,9 @@ public:
         buildGlobalTraces();
         if (const RewriteBuffer *RewriteBuf =
             Rewrite.getRewriteBufferFor(MainFileID)) {
-            writeGlobalTraces(C);
-            writeTypeDefinitions(C);
+            // @todo check what the following lines do
+            //writeGlobalTraces(C);
+            //writeTypeDefinitions(C);
             *OutFile << std::string(RewriteBuf->begin(), RewriteBuf->end());
         } else {
             StringRef buffer = SM->getBufferData(MainFileID).data();
