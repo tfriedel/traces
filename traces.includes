@@ -1,0 +1,5 @@
+/home/friedel/dev-lib/traces/demo
+/home/friedel/dev-lib/traces/include
+/home/friedel/dev-lib/traces/trace_dumper
+/home/friedel/dev-lib/traces/trace_instrumentor
+/home/friedel/opt/clang+llvm-3.1-x86_64-linux-ubuntu-11.10/include
