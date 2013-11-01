@@ -44,7 +44,7 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <set>
 
 #define TRACE_LOG                                                              \
-    std::string("std::cout << std::string(4*trace_get_nesting_level(), ' ')")
+    std::string("std::cout << std::string(4*trace_get_nesting_level()%40, ' ')")
 #define TRACING_ENABLED std::string("true")
 #define TRACE_ENDL std::string(" << std::endl; ")
 
@@ -58,10 +58,6 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
     + std::string("\nentry_was_logged = true;\n") \
     + "}trace_increment_nesting_level();}"
 
-//#define TRACE_FUNC_ENTRY std::string("std::cout << \"enter:  "+
-//trace_call.args[0].const_str +"\";")
-//#define TRACE_FUNC_LEAVE(logText) TRACE_LOG + std::string("<< \"<-- "+ logText
-//+"\" << std::endl;")
 
 #define TRACE_FUNC_LEAVE(logText, lineNo)                                              \
     std::string("if (") + TRACING_ENABLED + ")" + "{\n"                        \
@@ -730,11 +726,13 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
         // << \"";
         serialized << "\"" << escapeString(expression) << ": \""
                    << " << (" << expression << ")";
-    } else if (is_reference) {
+    } else if (is_reference) {        
         serialized << "\"" << escapeString(expression) << ": \""
                    << " << ("
                    << "\"[reference]\""
                    << ")";
+//        serialized << "\"" << escapeString(expression) << ": \""
+//                   << " << (" << expression << ")";
     } else if (is_pointer) {
         serialized << "\"" << escapeString(expression) << ": \""
                    << " << ("
