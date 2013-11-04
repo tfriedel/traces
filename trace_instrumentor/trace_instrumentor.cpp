@@ -44,27 +44,26 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <set>
 
 #define TRACE_LOG                                                              \
-    std::string("std::cout << std::string(4*trace_get_nesting_level()%40, ' ')")
+    std::string("std::cout << std::string(4*trace_get_nesting_level()%40, ' "  \
+                "')")
 #define TRACING_ENABLED std::string("true")
 #define TRACE_ENDL std::string(" << std::endl; ")
 
 #define TRACE_FUNC_ENTRY(logText, lineNo)                                      \
-    std::string("static int traceCounter_line_") + numberToStr(lineNo) + " = 0; bool entry_was_logged=false;\n" +   \
-    std::string("if (") + TRACING_ENABLED + ")" + "{\n" + \
-    + "if (traceCounter_line_" + numberToStr(lineNo) \
-    + "++ < defaultMaxLogCallsPerFunction) {\n" + TRACE_LOG \
-    + std::string("<< \"--> ") + trace_call.args[0].const_str \
-    + std::string("(\" << ") + logText + std::string("<< \")\"") + TRACE_ENDL \
-    + std::string("\nentry_was_logged = true;\n") \
-    + "}trace_increment_nesting_level();}"
+    std::string("static int traceCounter_line_") + numberToStr(lineNo)         \
+        + " = 0; bool entry_was_logged=false;\n" + std::string("if (")         \
+        + TRACING_ENABLED + ")" + "{\n" + +"if (traceCounter_line_"            \
+        + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"      \
+        + TRACE_LOG + std::string("<< \"--> ") + trace_call.args[0].const_str  \
+        + std::string("(\" << ") + logText + std::string("<< \")\"")           \
+        + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")             \
+        + "}trace_increment_nesting_level();}"
 
-
-#define TRACE_FUNC_LEAVE(logText, lineNo)                                              \
+#define TRACE_FUNC_LEAVE(logText, lineNo)                                      \
     std::string("if (") + TRACING_ENABLED + ")" + "{\n"                        \
-    + "trace_decrement_nesting_level(); "         \
-    "if (entry_was_logged)" \
-    + " {{\n" +  \
-         TRACE_LOG + std::string("<< \"<-- ") + std::string("(\"") + logText  \
+        + "trace_decrement_nesting_level(); "                                  \
+          "if (entry_was_logged)" + " {{\n" + TRACE_LOG                        \
+        + std::string("<< \"<-- ") + trace_call.args[0].const_str + std::string("(\"") + logText              \
         + std::string("<< \")\"") + TRACE_ENDL + "}}"
 
 using namespace clang;
@@ -76,8 +75,10 @@ static const Type *get_expr_type(const Expr *expr)
     return expr->getType().getCanonicalType().split().Ty;
 }
 
-static inline std::string numberToStr(int Number) {
-    return static_cast<std::ostringstream*>( &(std::ostringstream() << Number) )->str();
+static inline std::string numberToStr(int Number)
+{
+    return static_cast
+        <std::ostringstream *>(&(std::ostringstream() << Number))->str();
 }
 
 std::string castTo(LangOptions const &langOpts, std::string orig_expr,
@@ -200,7 +201,7 @@ static SourceLocation getReturnStmtEnd(ASTContext &ast, Rewriter *Rewrite,
 
 bool TraceParam::parseBasicTypeParam(QualType qual_type)
 {
-    const Type *type = qual_type.split().Ty;
+    type = qual_type.split().Ty;
 
     if (type->isReferenceType() || type->isPointerType()) {
         size = ast.getTypeSize(type);
@@ -540,7 +541,7 @@ std::string TraceCall::varlength_getTraceWriteExpression()
         if (param.isSimple()) {
             start_record << varlength_writeSimpleValue(
                                 param.expression, param.type_name,
-                                param.is_pointer, param.is_reference);
+                                param.is_pointer, param.is_reference, param.type);
             continue;
         }
 
@@ -615,7 +616,7 @@ std::string TraceCall::varlength_getTraceWriteExpression()
                                 + "- &__static_log_information_start)";
             std::string _type_name = "int";
             start_record << varlength_writeSimpleValue(logid, _type_name, false,
-                                                       false);
+                                                       false, param.type);
 
             start_record << param.expression;
             start_record << "(buf_left, _record, __record_ptr, typed_buf);";
@@ -656,36 +657,18 @@ std::string TraceCall::varlength_getFullTraceWriteExpression()
 
 std::string TraceCall::constlength_getFullTraceWriteExpression()
 {
-    /*
-    std::stringstream get_record;
-    std::stringstream start_record;
-    std::stringstream trace_record_payload;
-    unsigned int buf_left = 0;
-    get_record << "struct trace_record _record;";
-    get_record << "struct trace_record *_record_ptr;";
-    get_record << constlength_getRecord(severity);
-    start_record << constlength_initializeTypedRecord(severity, &buf_left);
-    start_record << constlength_getTraceWriteExpression(&buf_left);
-    start_record << "_record.termination |= TRACE_TERMINATION_LAST;";
-    start_record << constlength_commitRecord();
-    */
     std::stringstream log_stmts;
     std::string traceWriteExpression = constlength_getTraceWriteExpression();
     return traceWriteExpression;
-    /*
-    if (traceWriteExpression.size() > 3) {
-        //@todo line above is dirty hack
-        log_stmts << TRACE_LOG << traceWriteExpression << TRACE_ENDL;
-    }
-    return log_stmts.str();
-    */
+
 }
 
 std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
                                                     std::string &type_name,
                                                     bool is_pointer,
                                                     bool is_reference,
-                                                    unsigned int value_size)
+                                                    unsigned int value_size,
+                                                    const Type *type)
 {
     std::stringstream serialized;
     /*
@@ -724,20 +707,69 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
     if (!is_reference && !is_pointer) {
         // serialized << expression << ": \" << (" << expression << ") << \" \"
         // << \"";
+        std::stringstream new_expression;
+        if (type->isFloatingType()) {
+            new_expression << "(tracer::float_to_hex(" << expression << "))";
+        } else if (type->isCharType()) {
+            if (type->isSignedIntegerType()) {
+                new_expression << "(static_cast<int>(" << expression << ") & 0xFFFF)";
+            } else {
+                new_expression << "(static_cast<unsigned int>(" << expression << ") & 0xFFFF)";
+            }
+        } else {
+            new_expression << "(" << expression << ")";
+        }
         serialized << "\"" << escapeString(expression) << ": \""
-                   << " << (" << expression << ")";
-    } else if (is_reference) {        
+                   << " << (" << new_expression.str() << ")";
+    } else if (is_reference || is_pointer) {
         serialized << "\"" << escapeString(expression) << ": \""
-                   << " << ("
-                   << "\"[reference]\""
-                   << ")";
-//        serialized << "\"" << escapeString(expression) << ": \""
-//                   << " << (" << expression << ")";
-    } else if (is_pointer) {
-        serialized << "\"" << escapeString(expression) << ": \""
-                   << " << ("
-                   << "\"[pointer]\""
-                   << ")";
+                   << " << (";
+
+        if (type) {
+            bool unhandledType = false;
+            bool floatingPointType = false;
+            bool integerType = false;
+            if (!(type->isReferenceType() || type->isPointerType())) {
+                serialized << "\"[!isPointerType()]\"";
+                unhandledType = true;
+            } else {
+                const Type *pointeeType = type->getPointeeType().split().Ty;
+                if (!(pointeeType->isBuiltinType())) {
+                    serialized << "\"[!(pointeeType->isBuiltinType())]\"";
+                    unhandledType = true;
+                } else {
+                    const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
+                    // if (BT->getKind() == BuiltinType::Double) {
+                    if (BT->isFloatingPoint()) {
+                        int size = ast.getTypeSize(type) / 8;
+                        std::string type_name = QualType(pointeeType, 0).getAsString();
+                        floatingPointType = true;
+                    } else if (pointeeType->isIntegerType()) {
+                        integerType = true;
+                    } else {
+                        unhandledType = true;
+                    }
+                }
+            }
+            if (unhandledType) {
+                serialized << "\"[unhandledType :" +type_name+ "]\"";
+            } else if (integerType || floatingPointType) {
+                serialized << "(";
+                std::stringstream new_expression;
+                if (is_pointer) {
+                    new_expression << "*";
+                }
+                new_expression << expression;
+                if (floatingPointType) {
+                    serialized << "tracer::float_to_hex(" << new_expression.str() << "))";
+                } else {
+                    serialized << new_expression.str() << ")";
+                }
+            }
+        }
+
+        serialized << ")";
+
     }
     //@todo handle pointers, references etc
     return serialized.str();
@@ -746,7 +778,8 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
 std::string TraceCall::varlength_writeSimpleValue(std::string &expression,
                                                   std::string &type_name,
                                                   bool is_pointer,
-                                                  bool is_reference)
+                                                  bool is_reference,
+                                                  const Type *type)
 {
     std::stringstream serialized;
     std::string expression_sizeof = "sizeof(__src__)";
@@ -790,10 +823,18 @@ std::string TraceCall::constlength_getTraceWriteExpression()
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];
 
-        if (param.isSimple() || param.isVarString()) {
-            parameters.push_back(constlength_writeSimpleValue(
-                param.expression, param.type_name, param.is_pointer,
-                param.is_reference, param.size));
+        if (param.isSimple() || param.isVarString() ) {
+            //if (param.isSimple() && param.is_reference && param.)
+            std::string paramStr = constlength_writeSimpleValue(
+                        param.expression, param.type_name, param.is_pointer,
+                        param.is_reference, param.size, param.type);
+            std::stringstream ss;
+            if (!param.referencedTypes.empty()) {
+                ss << "referencedTypes[0].isIntegerType(): " << (*param.referencedTypes.begin())->isIntegerType();
+            }
+
+            paramStr = escapeString(ss.str()) + paramStr;
+            parameters.push_back(paramStr);
             continue;
         }
 
@@ -836,14 +877,6 @@ std::string TraceCall::constlength_getTraceWriteExpression()
 std::string TraceCall::getExpansion()
 {
     return constlength_getFullTraceWriteExpression();
-    /*
-    if (constantSizeTrace()) {
-        return getTraceDeclaration() +
-    constlength_getFullTraceWriteExpression();
-    } else {
-        return getTraceDeclaration() + varlength_getFullTraceWriteExpression();
-    }
-    */
 }
 
 void TraceCall::expand()
@@ -1332,7 +1365,6 @@ static SourceLocation getFunctionBodyStart(Stmt *FB)
     return startLoc.getLocWithOffset(1);
 }
 
-
 class DeclIterator : public DeclVisitor<DeclIterator>
 {
 public:
@@ -1375,7 +1407,7 @@ public:
     void VisitFunctionTemplateDecl(FunctionTemplateDecl *D);
     void VisitClassTemplateDecl(ClassTemplateDecl *D);
 
-private:    
+private:
     std::set<const Type *> &referencedTypes;
     std::set<TraceCall *> &globalTraces;
 };
@@ -1461,7 +1493,6 @@ void DeclIterator::VisitEnumConstantDecl(EnumConstantDecl *D)
 {
 }
 
-
 void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
 {
 
@@ -1523,10 +1554,12 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         enum trace_severity severity = TRACE_SEV_FUNC_TRACE;
         trace_call.setSeverity(severity);
         trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
-        trace_call.addTraceParam(function_name_param);        
+        trace_call.addTraceParam(function_name_param);
         Rewrite->ReplaceText(
-            endLocation, 1,            
-            TRACE_FUNC_LEAVE(trace_call.getExpansion(), SM->getPresumedLineNumber(function_start)) + std::string("}}"));
+            endLocation, 1,
+            TRACE_FUNC_LEAVE(trace_call.getExpansion(),
+                             SM->getPresumedLineNumber(function_start))
+            + std::string("}}"));
     }
 
     for (FunctionDecl::param_const_iterator I = D->param_begin(),
@@ -1546,10 +1579,13 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         trace_param.param_name = (*I)->getNameAsString();
         trace_param.expression = (*I)->getNameAsString();
         trace_call.addTraceParam(trace_param);
-    }          
+    }
 
-    Rewrite->InsertText(function_start,
-                        TRACE_FUNC_ENTRY(trace_call.getExpansion(), SM->getPresumedLineNumber(function_start)), true);
+    Rewrite->InsertText(
+        function_start,
+        TRACE_FUNC_ENTRY(trace_call.getExpansion(),
+                         SM->getPresumedLineNumber(function_start)),
+        true);
 exit:
     stmtiterator.Visit(D->getBody());
 }
@@ -1999,8 +2035,10 @@ expand:
     Rewrite->InsertText(onePastSemiLoc, "}", true);
     Stmt *stmt = FD->getBody();
     SourceLocation function_start = getFunctionBodyStart(stmt);
-    Rewrite->ReplaceText(startLoc, 6,
-                         TRACE_FUNC_LEAVE(trace_call.getExpansion(), SM->getPresumedLineNumber(function_start)) + " return ");
+    Rewrite->ReplaceText(
+        startLoc, 6, TRACE_FUNC_LEAVE(trace_call.getExpansion(),
+                                      SM->getPresumedLineNumber(function_start))
+                     + " return ");
     return;
 }
 
@@ -2181,7 +2219,7 @@ void StmtIterator::VisitArraySubscriptExpr(ArraySubscriptExpr *S)
 
 void StmtIterator::VisitCallExpr(CallExpr *S)
 {
-
+    // when is this triggered?
     TraceCall trace_call(Out, Diags, ast, Rewrite, referencedTypes,
                          globalTraces);
     bool successfully_parsed = trace_call.fromCallExpr(S);

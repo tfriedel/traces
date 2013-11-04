@@ -50,6 +50,7 @@ public:
     llvm::raw_ostream &Out;
     DiagnosticsEngine &Diags;
     ASTContext &ast;
+    const Type *type;
     Rewriter *Rewrite;
     std::set<const Type *> &referencedTypes;
     std::set<TraceCall *> &globalTraces;
@@ -57,7 +58,7 @@ public:
     unsigned NonInlineTraceRepresentDiag;
     unsigned MultipleReprCallsDiag;
     unsigned EmptyLiteralStringDiag;
-TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, Rewriter *rewriter, std::set<const Type *> &_referencedTypes, std::set<TraceCall *> &global_traces): Out(out), Diags(_Diags), ast(_ast), Rewrite(rewriter), referencedTypes(_referencedTypes), globalTraces(global_traces), type_name("0"), trace_call(NULL) {
+    TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, Rewriter *rewriter, std::set<const Type *> &_referencedTypes, std::set<TraceCall *> &global_traces): Out(out), Diags(_Diags), ast(_ast), Rewrite(rewriter), referencedTypes(_referencedTypes), globalTraces(global_traces), type_name("0"), trace_call(NULL), type(NULL) {
         clear();
         NonInlineTraceRepresentDiag = Diags.getCustomDiagID(DiagnosticsEngine::Error,
                                                          "non inline __repr__ may isn't supported");
@@ -268,13 +269,13 @@ private:
     std::string getTypeDefinitionExternDeclratations();
     std::string genMIN(std::string &a, std::string &b);
     
-    std::string constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, unsigned int size);
+    std::string constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, unsigned int size, const Type *type);
     std::string constlength_commitAndAllocateRecord(enum trace_severity severity, unsigned int *buf_left);
     std::string constlength_getRecord(enum trace_severity severity);
     std::string constlength_initializeTypedRecord(enum trace_severity severity, unsigned int *buf_left);
     std::string constlength_commitRecord();
 
-    std::string varlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference);
+    std::string varlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, const Type *type);
     std::string varlength_commitAndAllocateRecord(enum trace_severity severity);
     std::string varlength_getRecord(enum trace_severity severity);
     std::string varlength_initializeTypedRecord(enum trace_severity severity);
