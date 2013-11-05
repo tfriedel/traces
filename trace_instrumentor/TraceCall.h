@@ -271,8 +271,7 @@ public:
     {
         kind = _kind;
     }
-    std::string getExpansion();
-    std::string getTraceDeclaration();
+    std::string getExpansion();    
 
     bool method_generated;
     std::string trace_call_name;
@@ -290,13 +289,7 @@ private:
 
     unsigned UnknownTraceParamDiag;
 
-    enum trace_severity functionNameToTraceSeverity(std::string function_name);
-    bool parseTraceParams(CallExpr *S, std::vector<TraceParam> &args);
-    std::string getLiteralString(const Expr *expr);
-    void createTraceDeclaration(CallExpr *S, unsigned int severity,
-                                std::vector<TraceParam> &args);
-    bool prepareSingleTraceParam(const Expr *trace_param,
-                                 TraceParam &parsed_trace_param);
+    std::string getLiteralString(const Expr *expr);        
     void replaceExpr(const Expr *expr, std::string replacement);
 
     std::string getTypeDefinitionExternDeclratations();
@@ -307,9 +300,6 @@ private:
                                              bool is_pointer, bool is_reference,
                                              unsigned int size,
                                              const Type *type);    
-    std::string constlength_getRecord(enum trace_severity severity);
-    std::string constlength_initializeTypedRecord(enum trace_severity severity,
-                                                  unsigned int *buf_left);    
 
 
     bool constantSizeTrace();

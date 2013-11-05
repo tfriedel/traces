@@ -349,75 +349,6 @@ bool TraceParam::parseEnumTypeParam(const Expr *expr)
     return true;
 }
 
-static bool traceCallReferenced(std::set<TraceCall *> &traces,
-                                std::string trace_name)
-{
-    for (std::set<TraceCall *>::iterator i = traces.begin(); i != traces.end();
-         i++) {
-        TraceCall *trace_call = *i;
-        if (trace_call->trace_call_name.compare(trace_name) == 0) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-const char *sev_to_str[]
-    = { "INVALID", "FUNC_TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL" };
-
-std::string TraceCall::getTraceDeclaration()
-{
-    std::stringstream params;
-    std::string flags;
-    std::string str;
-    std::string param_name;
-    std::string type_id;
-    for (unsigned int i = 0; i < args.size(); i++) {
-        TraceParam &param = args[i];
-        param_name = "0";
-        flags = param.stringifyTraceParamFlags();
-        if (param.param_name.size() > 0) {
-            flags += "| TRACE_PARAM_FLAG_NAMED_PARAM";
-            param_name = "\"" + param.param_name + "\"";
-        }
-
-        if (param.const_str.size() > 0) {
-            flags += "| TRACE_PARAM_FLAG_CSTR";
-            str = "{\"" + param.const_str + "\"}";
-        } else {
-            std::string type = "0";
-            if (param.type_name.compare("0") != 0) {
-                str = "{\"" + param.type_name + "\"}";
-            }
-        }
-
-        if (param.flags & TRACE_PARAM_FLAG_ENUM) {
-            type_id = "&" + normalizeTypeName(param.type_name) + "_ptr"
-                      + " - &__type_information_start";
-        } else {
-            type_id = "0";
-        }
-
-        params << "{" << flags << ", " << type_id << ", " << param_name << ","
-               << str << "},";
-    }
-
-    params << "{0, 0, 0}";
-    std::stringstream descriptor;
-    descriptor << "static struct trace_param_descriptor " << trace_call_name
-               << "_params[] = {";
-    descriptor << params.str() << "};";
-    descriptor << "static struct trace_log_descriptor "
-                  "__attribute__((__section__(\".static_log_data\"))) "
-               << trace_call_name << "= { ";
-    descriptor << kind;
-    descriptor << ", "
-               << "TRACE_SEV_" << sev_to_str[severity];
-    descriptor << +", " << trace_call_name << "_params };";
-
-    return descriptor.str();
-}
 
 void TraceCall::replaceExpr(const Expr *expr, std::string replacement)
 {
@@ -426,38 +357,6 @@ void TraceCall::replaceExpr(const Expr *expr, std::string replacement)
 
     Rewrite->ReplaceText(expr->getLocStart(), size, replacement);
 }
-
-
-
-std::string TraceCall::constlength_getRecord(enum trace_severity severity)
-{
-    std::stringstream code;
-
-    code << "_record_ptr = trace_get_record(TRACE_SEV_" << sev_to_str[severity]
-         << ", &_record.generation);";
-    return code.str();
-}
-
-
-std::string
-TraceCall::constlength_initializeTypedRecord(enum trace_severity severity,
-                                             unsigned int *buf_left)
-{
-    std::stringstream code;
-    code << "_record.ts = trace_get_nsec();";
-    code << "_record.pid = trace_get_pid();";
-    code << "_record.tid =  trace_get_tid(); ";
-    code << "_record.termination = TRACE_TERMINATION_FIRST;";
-    code << "_record.rec_type  = TRACE_REC_TYPE_TYPED;";
-    code << "_record.nesting = trace_get_nesting_level();";
-    code << "_record.severity = TRACE_SEV_" << sev_to_str[severity] << ";";
-    code << "_record.u.typed.log_id = &tracelog - "
-            "&__static_log_information_start;";
-    (*buf_left) = TRACE_RECORD_PAYLOAD_SIZE - 4;
-    return code.str();
-}
-
-
 
 std::string TraceCall::genMIN(std::string &a, std::string &b)
 {
@@ -543,8 +442,6 @@ std::string TraceCall::constlength_writeSimpleValue(
     return serialized.str();
 }
 
-
-
 std::string TraceCall::getExpansion()
 {
     std::stringstream start_record;
@@ -589,9 +486,6 @@ std::string TraceCall::getExpansion()
     }
     return start_record.str();
 }
-
-
-
 
 class FunctionCallerFinder : public StmtVisitor<FunctionCallerFinder>
 {
@@ -750,30 +644,27 @@ bool TraceParam::parseClassTypeParam(const Expr *expr)
             << call_expr->getSourceRange();
     }
 
-    TraceCall *_trace_call = new TraceCall(
-        Out, Diags, ast, Rewrite
-        //                                           referencedTypes,
-        // globalTraces
-        );
-    if (!_trace_call->fromCallExpr(call_expr)) {
-        return false;
-    }
+    return false;
+//    TraceCall *_trace_call = new TraceCall(Out, Diags, ast, Rewrite);
+//    if (!_trace_call->fromCallExpr(call_expr)) {
+//        return false;
+//    }
 
-    trace_call = _trace_call;
-    // TODO: Unique name, don't add duplicate logs
-    std::string _type_name
-        = normalizeTypeName(QualType(pointeeType, 0).getAsString());
-    std::stringstream trace_call_name;
-    trace_call_name << _type_name;
-    trace_call_name << "_tracelog";
-    trace_call->trace_call_name = trace_call_name.str();
-    method_generated = true;
-    flags |= TRACE_PARAM_FLAG_NESTED_LOG;
-    expression = "(" + getLiteralExpr(ast, Rewrite, expr)
-                 + ")->_trace_represent";
-    type_name = QualType(pointeeType, 0).getAsString();
+//    trace_call = _trace_call;
+//    // TODO: Unique name, don't add duplicate logs
+//    std::string _type_name
+//        = normalizeTypeName(QualType(pointeeType, 0).getAsString());
+//    std::stringstream trace_call_name;
+//    trace_call_name << _type_name;
+//    trace_call_name << "_tracelog";
+//    trace_call->trace_call_name = trace_call_name.str();
+//    method_generated = true;
+//    flags |= TRACE_PARAM_FLAG_NESTED_LOG;
+//    expression = "(" + getLiteralExpr(ast, Rewrite, expr)
+//                 + ")->_trace_represent";
+//    type_name = QualType(pointeeType, 0).getAsString();
 
-    return true;
+//    return true;
 }
 
 bool TraceParam::parseHexBufParam(const Expr *expr)
@@ -907,11 +798,7 @@ static std::string getCallExprFunctionName(const CallExpr *CE)
     return callee->getQualifiedNameAsString();
 }
 
-enum trace_severity
-TraceCall::functionNameToTraceSeverity(std::string function_name)
-{
-    return trace_function_name_to_severity(function_name.c_str());
-}
+
 
 bool TraceParam::fromType(QualType type, bool fill_unknown_type)
 {
@@ -983,53 +870,11 @@ bool TraceCall::constantSizeTrace(void)
     return true;
 }
 
-bool TraceCall::parseTraceParams(CallExpr *S, std::vector<TraceParam> &args)
-{
-    Expr **call_args = S->getArgs();
-    for (unsigned int i = 0; i < S->getNumArgs(); i++) {
-        TraceParam trace_param(Out, Diags, ast, Rewrite);
-        trace_param.clear();
-        if (trace_param.fromExpr(call_args[i], true)) {
-            if (trace_param.const_str.length() == 0
-                && valid_param_name(trace_param.expression)) {
-                trace_param.param_name = trace_param.expression;
-            }
-
-            args.push_back(trace_param);
-        } else {
-            unknownTraceParam(call_args[i]);
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool TraceCall::fromCallExpr(CallExpr *expr)
-{
-    args.clear();
-    severity = TRACE_SEV_INVALID;
-    std::string function_name = getCallExprFunctionName(expr);
-    enum trace_severity _severity = functionNameToTraceSeverity(function_name);
-    if ((_severity < TRACE_SEV__MIN || _severity > TRACE_SEV__MAX)) {
-        if (function_name.compare("REPR") != 0) {
-            return false;
-        }
-    }
-
-    severity = _severity;
-    kind = "TRACE_LOG_DESCRIPTOR_KIND_EXPLICIT";
-    if (!parseTraceParams(expr, args)) {
-        return false;
-    }
-
-    call_expr = expr;
-    return true;
-}
 
 static bool shouldInstrumentFunctionDecl(const FunctionDecl *D,
                                          bool whitelistExceptions)
 {
+    //@todo: implement filters
     if (D->isInlined()) {
         return false;
         if (!(D->isCXXClassMember() || D->isCXXInstanceMember())) {
