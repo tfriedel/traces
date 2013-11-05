@@ -71,8 +71,8 @@ using namespace clang;
 
 namespace
 {
-static bool printFlags = true;
-//static bool printFlags = false;
+//static bool printFlags = true;
+static bool printFlags = false;
 
 static const Type *get_expr_type(const Expr *expr)
 {
@@ -150,8 +150,10 @@ static std::string escapeString(std::string const &s)
 
 static std::string printAisB(const std::string &a, const std::string &b) {
     std::stringstream serialized;
-    serialized << "\"" << escapeString(a) << ": \""
-               << " << (" << b << ")";
+    if (b.length() > 0) {
+        serialized << "\"" << escapeString(a) << ": \""
+                   << " << (" << b << ")";
+    }
     return serialized.str();
 }
 
@@ -481,16 +483,16 @@ std::string TraceCall::getExpansion()
     std::vector<std::string> parameters;
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];        
-//        if ((param.flags & TRACE_PARAM_FLAG_CSTR)) {
-//            std::string paramStr = printAisB(param.expression, param.expression);
-//            std::stringstream ss;
-//            if (printFlags) {
-//                ss  << "\"" << escapeString(param.asString()) << "\"";
-//            }
-//            paramStr = ss.str() + paramStr;
-//            parameters.push_back(paramStr);
-//            continue;
-//        } else
+        if ((param.flags & TRACE_PARAM_FLAG_CSTR)) {
+            std::string paramStr = printAisB(param.expression, param.expression);
+            std::stringstream ss;
+            if (printFlags) {
+                ss  << "\"" << escapeString(param.asString()) << "\"";
+            }
+            paramStr = ss.str() + paramStr;
+            parameters.push_back(paramStr);
+            continue;
+        } else
         if (param.isSimple() || param.isVarString()) {
             std::string paramStr = constlength_writeSimpleValue(
                 param.expression, param.type_name, param.is_pointer,
@@ -845,9 +847,9 @@ static std::string getCallExprFunctionName(const CallExpr *CE)
 bool TraceParam::fromType(QualType type, bool fill_unknown_type)
 {
     QualType canonical_type = type.getCanonicalType();
-//    if (parseCStrTypeParam(canonical_type)) {
-//        return true;
-//    } else
+    if (parseCStrTypeParam(canonical_type)) {
+        return true;
+    } else
     if (parseEnumTypeParam(canonical_type)) {
         return true;
     } else if (parseBasicTypeParam(canonical_type)) {
@@ -1099,7 +1101,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
     TraceParam function_name_param(Out, Diags, ast, Rewrite);
     function_name_param.setConstStr(D->getQualifiedNameAsString());
     TraceCall trace_call(Out, Diags, ast, Rewrite);
-    trace_call.addTraceParam(function_name_param);
+//    trace_call.addTraceParam(function_name_param);
     enum trace_severity severity = TRACE_SEV_FUNC_TRACE;
 
     if (NULL
