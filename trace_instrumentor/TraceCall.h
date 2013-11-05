@@ -1,7 +1,7 @@
 /***
 Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
    Sponsored by infinidat (http://infinidat.com)
-   
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -42,31 +42,37 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 
 using namespace clang;
 
-namespace {
+namespace
+{
 
-class TraceCall;    
-class TraceParam {
+class TraceCall;
+class TraceParam
+{
 public:
     llvm::raw_ostream &Out;
     DiagnosticsEngine &Diags;
     ASTContext &ast;
     const Type *type;
     Rewriter *Rewrite;
-    std::set<const Type *> &referencedTypes;
-    std::set<TraceCall *> &globalTraces;
-
     unsigned NonInlineTraceRepresentDiag;
     unsigned MultipleReprCallsDiag;
     unsigned EmptyLiteralStringDiag;
-    TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, Rewriter *rewriter, std::set<const Type *> &_referencedTypes, std::set<TraceCall *> &global_traces): Out(out), Diags(_Diags), ast(_ast), Rewrite(rewriter), referencedTypes(_referencedTypes), globalTraces(global_traces), type_name("0"), trace_call(NULL), type(NULL) {
+    TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags,
+               ASTContext &_ast, Rewriter *rewriter)
+        : Out(out), Diags(_Diags), ast(_ast), Rewrite(rewriter), type_name("0"),
+          trace_call(NULL), type(NULL)
+    {
         clear();
-        NonInlineTraceRepresentDiag = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                                         "non inline __repr__ may isn't supported");
-        MultipleReprCallsDiag = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                                      "a __repr__ function may have only a single call to REPR() (showing last call to REPR)");
-        EmptyLiteralStringDiag = Diags.getCustomDiagID(DiagnosticsEngine::Warning,
-                                                      "Empty literal string in trace has no effect");
-
+        NonInlineTraceRepresentDiag
+            = Diags.getCustomDiagID(DiagnosticsEngine::Error,
+                                    "non inline __repr__ may isn't supported");
+        MultipleReprCallsDiag = Diags.getCustomDiagID(
+            DiagnosticsEngine::Error, "a __repr__ function may have only a "
+                                      "single call to REPR() (showing last "
+                                      "call to REPR)");
+        EmptyLiteralStringDiag = Diags.getCustomDiagID(
+            DiagnosticsEngine::Warning,
+            "Empty literal string in trace has no effect");
     }
 
     bool fromType(QualType type, bool fill_unknown);
@@ -81,27 +87,34 @@ public:
     bool is_pointer;
     bool is_reference;
     bool method_generated;
-   
-    unsigned int size;
-    void clear(void) { flags = 0; const_str = std::string(); expression = std::string(); is_pointer = false; is_reference = false;}
 
-    TraceParam& operator = ( const TraceParam& source )
+    unsigned int size;
+    void clear(void)
     {
-        const_str        = source.const_str;
-        param_name       = source.param_name;
-        flags            = source.flags;
-        expression       = source.expression;
-        size_expression  = source.size_expression;
-        size             = source.size;
-        trace_call       = source.trace_call;
-        Diags            = source.Diags;
-        
+        flags = 0;
+        const_str = std::string();
+        expression = std::string();
+        is_pointer = false;
+        is_reference = false;
+    }
+
+    TraceParam &operator=(const TraceParam &source)
+    {
+        const_str = source.const_str;
+        param_name = source.param_name;
+        flags = source.flags;
+        expression = source.expression;
+        size_expression = source.size_expression;
+        size = source.size;
+        trace_call = source.trace_call;
+        Diags = source.Diags;
+
         type_name = type_name;
         is_pointer = is_pointer;
         is_reference = is_reference;
         return *this;
     }
-    
+
     std::string stringifyTraceParamFlags()
     {
         std::stringstream trace_flags;
@@ -157,8 +170,9 @@ public:
 
         return trace_flags.str();
     }
-    
-    std::string asString() {
+
+    std::string asString()
+    {
         std::ostringstream os;
         os << "TraceParam(flags = " << stringifyTraceParamFlags() << ", ";
         if (const_str.length() != 0) {
@@ -173,22 +187,28 @@ public:
         return os.str();
     }
 
-    bool isEnum() {
+    bool isEnum()
+    {
         if (flags & TRACE_PARAM_FLAG_ENUM) {
             return true;
         } else {
             return false;
         }
     }
-    bool isSimple() {
-        if (flags & (TRACE_PARAM_FLAG_ENUM | TRACE_PARAM_FLAG_NUM_8 | TRACE_PARAM_FLAG_NUM_16 | TRACE_PARAM_FLAG_NUM_32 | TRACE_PARAM_FLAG_NUM_64 | TRACE_PARAM_FLAG_FP ) && !(flags & TRACE_PARAM_FLAG_VARRAY)) {
+    bool isSimple()
+    {
+        if (flags & (TRACE_PARAM_FLAG_ENUM | TRACE_PARAM_FLAG_NUM_8
+                     | TRACE_PARAM_FLAG_NUM_16 | TRACE_PARAM_FLAG_NUM_32
+                     | TRACE_PARAM_FLAG_NUM_64 | TRACE_PARAM_FLAG_FP)
+            && !(flags & TRACE_PARAM_FLAG_VARRAY)) {
             return true;
         } else {
             return false;
         }
     }
 
-    bool isVarString() {
+    bool isVarString()
+    {
         if (flags & TRACE_PARAM_FLAG_STR) {
             return true;
         } else {
@@ -196,7 +216,8 @@ public:
         }
     }
 
-    bool isBuffer() {
+    bool isBuffer()
+    {
         if (flags & (TRACE_PARAM_FLAG_VARRAY | TRACE_PARAM_FLAG_NUM_8)) {
             return true;
         } else {
@@ -204,7 +225,8 @@ public:
         }
     }
 
-    void setConstStr(std::string str) {
+    void setConstStr(std::string str)
+    {
         flags |= TRACE_PARAM_FLAG_CSTR;
         const_str = str;
     }
@@ -224,22 +246,36 @@ private:
     bool parseClassTypeParam(const Expr *expr);
 };
 
-class TraceCall {
+class TraceCall
+{
 public:
-TraceCall(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, Rewriter *rewriter, std::set<const Type *> &referenced_types, std::set<TraceCall *> &global_traces) : method_generated(false), trace_call_name("tracelog"), ast(_ast), Diags(_Diags), Out(out), Rewrite(rewriter), referencedTypes(referenced_types), globalTraces(global_traces){
-        UnknownTraceParamDiag = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                                      "Unsupported trace parameter type");
+    TraceCall(llvm::raw_ostream &out, DiagnosticsEngine &_Diags,
+              ASTContext &_ast, Rewriter *rewriter)
+        : method_generated(false), trace_call_name("tracelog"), ast(_ast),
+          Diags(_Diags), Out(out), Rewrite(rewriter)
+    {
+        UnknownTraceParamDiag = Diags.getCustomDiagID(
+            DiagnosticsEngine::Error, "Unsupported trace parameter type");
     }
 
     bool fromCallExpr(CallExpr *exp);
-    void addTraceParam(TraceParam &param) { args.push_back(param); }
-    void setSeverity(enum trace_severity _severity) { severity = _severity; }
-    void setKind(const char *_kind) { kind = _kind; }
+    void addTraceParam(TraceParam &param)
+    {
+        args.push_back(param);
+    }
+    void setSeverity(enum trace_severity _severity)
+    {
+        severity = _severity;
+    }
+    void setKind(const char *_kind)
+    {
+        kind = _kind;
+    }
     std::string getExpansion();
     void expand();
     void expandWithoutDeclaration();
     std::string getTraceDeclaration();
-    
+
     bool method_generated;
     std::string trace_call_name;
     std::vector<TraceParam> args;
@@ -255,34 +291,42 @@ private:
     Rewriter *Rewrite;
 
     unsigned UnknownTraceParamDiag;
-    
-    std::set<const Type *> &referencedTypes;
-    std::set<TraceCall *> &globalTraces;
 
     enum trace_severity functionNameToTraceSeverity(std::string function_name);
     bool parseTraceParams(CallExpr *S, std::vector<TraceParam> &args);
     std::string getLiteralString(const Expr *expr);
-    void createTraceDeclaration(CallExpr *S, unsigned int severity, std::vector<TraceParam> &args);
-    bool prepareSingleTraceParam(const Expr *trace_param, TraceParam &parsed_trace_param);
+    void createTraceDeclaration(CallExpr *S, unsigned int severity,
+                                std::vector<TraceParam> &args);
+    bool prepareSingleTraceParam(const Expr *trace_param,
+                                 TraceParam &parsed_trace_param);
     void replaceExpr(const Expr *expr, std::string replacement);
 
     std::string getTypeDefinitionExternDeclratations();
     std::string genMIN(std::string &a, std::string &b);
-    
-    std::string constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, unsigned int size, const Type *type);
-    std::string constlength_commitAndAllocateRecord(enum trace_severity severity, unsigned int *buf_left);
+
+    std::string constlength_writeSimpleValue(std::string &expression,
+                                             std::string &type_name,
+                                             bool is_pointer, bool is_reference,
+                                             unsigned int size,
+                                             const Type *type);
+    std::string
+    constlength_commitAndAllocateRecord(enum trace_severity severity,
+                                        unsigned int *buf_left);
     std::string constlength_getRecord(enum trace_severity severity);
-    std::string constlength_initializeTypedRecord(enum trace_severity severity, unsigned int *buf_left);
+    std::string constlength_initializeTypedRecord(enum trace_severity severity,
+                                                  unsigned int *buf_left);
     std::string constlength_commitRecord();
 
-    std::string varlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer, bool is_reference, const Type *type);
+    std::string varlength_writeSimpleValue(std::string &expression,
+                                           std::string &type_name,
+                                           bool is_pointer, bool is_reference,
+                                           const Type *type);
     std::string varlength_commitAndAllocateRecord(enum trace_severity severity);
     std::string varlength_getRecord(enum trace_severity severity);
     std::string varlength_initializeTypedRecord(enum trace_severity severity);
     std::string varlength_commitRecord();
     bool constantSizeTrace();
     void unknownTraceParam(const Expr *trace_param);
-
 
     std::string constlength_getTraceWriteExpression();
     std::string constlength_getFullTraceWriteExpression();

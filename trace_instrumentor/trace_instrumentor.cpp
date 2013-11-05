@@ -63,8 +63,9 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
     std::string("if (") + TRACING_ENABLED + ")" + "{\n"                        \
         + "trace_decrement_nesting_level(); "                                  \
           "if (entry_was_logged)" + " {{\n" + TRACE_LOG                        \
-        + std::string("<< \"<-- ") + trace_call.args[0].const_str + std::string("(\"") + logText              \
-        + std::string("<< \")\"") + TRACE_ENDL + "}}"
+        + std::string("<< \"<-- ") + trace_call.args[0].const_str              \
+        + std::string("(\"") + logText + std::string("<< \")\"") + TRACE_ENDL  \
+        + "}}"
 
 using namespace clang;
 
@@ -289,11 +290,6 @@ bool TraceParam::parseBasicTypeParam(const Expr *expr)
     return true;
 }
 
-void TraceParam::referenceType(const Type *type)
-{
-    referencedTypes.insert(type);
-}
-
 bool TraceParam::parseRecordTypeParam(const Expr *expr)
 {
     const Expr *stripped_expr = expr->IgnoreImpCasts();
@@ -307,7 +303,7 @@ bool TraceParam::parseRecordTypeParam(const Expr *expr)
         return false;
     }
 
-    referenceType(type);
+    //    referenceType(type);
     flags |= TRACE_PARAM_FLAG_RECORD;
     expression = getLiteralExpr(ast, Rewrite, expr);
     type_name = expr->getType().getCanonicalType().getAsString();
@@ -325,7 +321,7 @@ bool TraceParam::parseEnumTypeParam(QualType qual_type)
         return false;
     }
 
-    referenceType(qual_type.split().Ty);
+    //    referenceType(qual_type.split().Ty);
     flags |= TRACE_PARAM_FLAG_ENUM;
     type_name = qual_type.getAsString();
     size = 4;
@@ -541,7 +537,8 @@ std::string TraceCall::varlength_getTraceWriteExpression()
         if (param.isSimple()) {
             start_record << varlength_writeSimpleValue(
                                 param.expression, param.type_name,
-                                param.is_pointer, param.is_reference, param.type);
+                                param.is_pointer, param.is_reference,
+                                param.type);
             continue;
         }
 
@@ -605,22 +602,6 @@ std::string TraceCall::varlength_getTraceWriteExpression()
             continue;
         }
 
-        if (param.trace_call) {
-            if (!traceCallReferenced(globalTraces,
-                                     param.trace_call->trace_call_name)) {
-                globalTraces.insert(param.trace_call);
-            }
-
-            // TODO: Just do a single copy
-            std::string logid = "(&" + param.trace_call->trace_call_name
-                                + "- &__static_log_information_start)";
-            std::string _type_name = "int";
-            start_record << varlength_writeSimpleValue(logid, _type_name, false,
-                                                       false, param.type);
-
-            start_record << param.expression;
-            start_record << "(buf_left, _record, __record_ptr, typed_buf);";
-        }
         continue;
     }
 
@@ -629,27 +610,7 @@ std::string TraceCall::varlength_getTraceWriteExpression()
 
 std::string TraceCall::varlength_getFullTraceWriteExpression()
 {
-    /*
-    std::stringstream get_record;
-    std::stringstream start_record;
-    std::stringstream trace_record_payload;
-    get_record << "unsigned int _buf_left; ";
-    get_record << "unsigned int *buf_left = &_buf_left; ";
-    get_record << "struct trace_record __record;";
-    get_record << "struct trace_record *_record = &__record;";
-    get_record << "struct trace_record *__record_ptr_alloc;";
-    get_record << "struct trace_record **__record_ptr = &__record_ptr_alloc;";
-    get_record << "unsigned char *_payload_ptr = " << castTo(ast.getLangOpts(),
-    "&_record->u.payload", "unsigned char *") << ";";
-    get_record << "unsigned char **typed_buf =  &_payload_ptr;";
-    get_record << varlength_getRecord(severity);
-    start_record << varlength_initializeTypedRecord(severity);
-    start_record << varlength_getTraceWriteExpression();
-    start_record << "_record->termination |= TRACE_TERMINATION_LAST;";
-    start_record << varlength_commitRecord();
 
-    return get_record.str() + start_record.str();
-    */
     std::stringstream log_stmts;
     log_stmts << TRACE_LOG << varlength_getTraceWriteExpression();
     return log_stmts.str();
@@ -660,61 +621,24 @@ std::string TraceCall::constlength_getFullTraceWriteExpression()
     std::stringstream log_stmts;
     std::string traceWriteExpression = constlength_getTraceWriteExpression();
     return traceWriteExpression;
-
 }
 
-std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
-                                                    std::string &type_name,
-                                                    bool is_pointer,
-                                                    bool is_reference,
-                                                    unsigned int value_size,
-                                                    const Type *type)
+std::string TraceCall::constlength_writeSimpleValue(
+    std::string &expression, std::string &type_name, bool is_pointer,
+    bool is_reference, unsigned int value_size, const Type *type)
 {
     std::stringstream serialized;
-    /*
-        serialized << "{";
-        if (is_pointer) {
-            serialized << "volatile const void * __src__ =  " <<
-       castTo(ast.getLangOpts(), expression, "volatile const void *") << ";";
-        } else if (is_reference) {
-            serialized << "volatile const void * __src__ =  " <<
-       castTo(ast.getLangOpts(), "&" + expression, "volatile const void *") <<
-       ";";
-        } else {
-            serialized << type_name <<  " __src__ = (" << expression << ");";
-        }
-
-        unsigned int copy_size = MIN(value_size, (*buf_left));
-        serialized << "__builtin_memcpy((&_record.u.payload[" <<
-       TRACE_RECORD_PAYLOAD_SIZE - (*buf_left) << "]), &__src__," << copy_size
-       << ");";
-        (*buf_left) -= copy_size;
-        if ((*buf_left) == 0) {
-            if (copy_size) {
-                serialized << constlength_commitAndAllocateRecord(severity,
-       buf_left);
-                serialized << "__builtin_memcpy(&_record.u.payload, " +
-       castTo(ast.getLangOpts(), "(&__src__", "const char *") << "+ " <<
-       copy_size << "), " << value_size - copy_size << ");";
-            }
-
-            (*buf_left) -= value_size - copy_size;
-        }
-
-        serialized << "}";
-        */
-    // "expression: " << expression;
     if (!is_reference && !is_pointer) {
-        // serialized << expression << ": \" << (" << expression << ") << \" \"
-        // << \"";
         std::stringstream new_expression;
         if (type->isFloatingType()) {
             new_expression << "(tracer::float_to_hex(" << expression << "))";
         } else if (type->isCharType()) {
             if (type->isSignedIntegerType()) {
-                new_expression << "(static_cast<int>(" << expression << ") & 0xFFFF)";
+                new_expression << "(static_cast<int>(" << expression
+                               << ") & 0xFFFF)";
             } else {
-                new_expression << "(static_cast<unsigned int>(" << expression << ") & 0xFFFF)";
+                new_expression << "(static_cast<unsigned int>(" << expression
+                               << ") & 0xFFFF)";
             }
         } else {
             new_expression << "(" << expression << ")";
@@ -742,7 +666,8 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
                     // if (BT->getKind() == BuiltinType::Double) {
                     if (BT->isFloatingPoint()) {
                         int size = ast.getTypeSize(type) / 8;
-                        std::string type_name = QualType(pointeeType, 0).getAsString();
+                        std::string type_name
+                            = QualType(pointeeType, 0).getAsString();
                         floatingPointType = true;
                     } else if (pointeeType->isIntegerType()) {
                         integerType = true;
@@ -752,7 +677,7 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
                 }
             }
             if (unhandledType) {
-                serialized << "\"[unhandledType :" +type_name+ "]\"";
+                serialized << "\"[unhandledType :" + type_name + "]\"";
             } else if (integerType || floatingPointType) {
                 serialized << "(";
                 std::stringstream new_expression;
@@ -761,7 +686,8 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
                 }
                 new_expression << expression;
                 if (floatingPointType) {
-                    serialized << "tracer::float_to_hex(" << new_expression.str() << "))";
+                    serialized << "tracer::float_to_hex("
+                               << new_expression.str() << "))";
                 } else {
                     serialized << new_expression.str() << ")";
                 }
@@ -769,7 +695,6 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression,
         }
 
         serialized << ")";
-
     }
     //@todo handle pointers, references etc
     return serialized.str();
@@ -823,15 +748,11 @@ std::string TraceCall::constlength_getTraceWriteExpression()
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];
 
-        if (param.isSimple() || param.isVarString() ) {
-            //if (param.isSimple() && param.is_reference && param.)
+        if (param.isSimple() || param.isVarString()) {
             std::string paramStr = constlength_writeSimpleValue(
-                        param.expression, param.type_name, param.is_pointer,
-                        param.is_reference, param.size, param.type);
+                param.expression, param.type_name, param.is_pointer,
+                param.is_reference, param.size, param.type);
             std::stringstream ss;
-            if (!param.referencedTypes.empty()) {
-                ss << "referencedTypes[0].isIntegerType(): " << (*param.referencedTypes.begin())->isIntegerType();
-            }
 
             paramStr = escapeString(ss.str()) + paramStr;
             parameters.push_back(paramStr);
@@ -852,16 +773,7 @@ std::string TraceCall::constlength_getTraceWriteExpression()
     bool empty = true;
     for (std::vector<std::string>::iterator it = parameters.begin();
          it != parameters.end(); ++it, ++i) {
-        // dirty hack
-        /*
-        if ((*it).size()>2) {
-            start_record << *it;
-            empty = false;
-            if (i < parameters.size()-1) {
-                start_record << "<< \", \" << ";
-            }
-        }
-        */
+
         start_record << *it;
         empty = false;
         if (i < parameters.size() - 1) {
@@ -1052,8 +964,11 @@ bool TraceParam::parseClassTypeParam(const Expr *expr)
             << call_expr->getSourceRange();
     }
 
-    TraceCall *_trace_call = new TraceCall(Out, Diags, ast, Rewrite,
-                                           referencedTypes, globalTraces);
+    TraceCall *_trace_call = new TraceCall(
+        Out, Diags, ast, Rewrite
+        //                                           referencedTypes,
+        // globalTraces
+        );
     if (!_trace_call->fromCallExpr(call_expr)) {
         return false;
     }
@@ -1286,8 +1201,7 @@ bool TraceCall::parseTraceParams(CallExpr *S, std::vector<TraceParam> &args)
 {
     Expr **call_args = S->getArgs();
     for (unsigned int i = 0; i < S->getNumArgs(); i++) {
-        TraceParam trace_param(Out, Diags, ast, Rewrite, referencedTypes,
-                               globalTraces);
+        TraceParam trace_param(Out, Diags, ast, Rewrite);
         trace_param.clear();
         if (trace_param.fromExpr(call_args[i], true)) {
             if (trace_param.const_str.length() == 0
@@ -1378,12 +1292,9 @@ public:
 
     DeclIterator(llvm::raw_ostream &xOut, DiagnosticsEngine &_Diags,
                  ASTContext &xAst, Rewriter *rewriter, SourceManager *sm,
-                 const LangOptions &_langOpts,
-                 std::set<const Type *> &referenced_types,
-                 std::set<TraceCall *> &global_traces)
+                 const LangOptions &_langOpts)
         : Out(xOut), Diags(_Diags), ast(xAst), Rewrite(rewriter), SM(sm),
-          langOpts(_langOpts), whitelistExceptions(false),
-          referencedTypes(referenced_types), globalTraces(global_traces) {};
+          langOpts(_langOpts), whitelistExceptions(false) {};
     void VisitDeclContext(DeclContext *DC, bool Indent = true);
     void VisitTranslationUnitDecl(TranslationUnitDecl *D);
     void VisitTypedefDecl(TypedefDecl *D);
@@ -1406,10 +1317,6 @@ public:
     void VisitTemplateDecl(const TemplateDecl *D);
     void VisitFunctionTemplateDecl(FunctionTemplateDecl *D);
     void VisitClassTemplateDecl(ClassTemplateDecl *D);
-
-private:
-    std::set<const Type *> &referencedTypes;
-    std::set<TraceCall *> &globalTraces;
 };
 
 class StmtIterator : public StmtVisitor<StmtIterator>
@@ -1427,12 +1334,10 @@ public:
     StmtIterator(llvm::raw_ostream &xOut, DiagnosticsEngine &_Diags,
                  ASTContext &xAst, Rewriter *rewriter, SourceManager *sm,
                  const LangOptions &_langOpts, Decl *_D,
-                 bool _whitelistExceptions,
-                 std::set<const Type *> &referenced_types,
-                 std::set<TraceCall *> &global_traces)
+                 bool _whitelistExceptions)
         : Out(xOut), Diags(_Diags), ast(xAst), Rewrite(rewriter), SM(sm),
-          langOpts(_langOpts), D(_D), whitelistExceptions(_whitelistExceptions),
-          referencedTypes(referenced_types), globalTraces(global_traces) {};
+          langOpts(_langOpts), D(_D),
+          whitelistExceptions(_whitelistExceptions) {};
 
 #define STMT(Node, Base) void Visit##Node(Node *S);
 #include <clang/AST/StmtNodes.inc>
@@ -1449,8 +1354,6 @@ public:
 
 private:
     void expandTraceLog(unsigned int severity, CallExpr *S);
-    std::set<const Type *> &referencedTypes;
-    std::set<TraceCall *> &globalTraces;
 };
 
 void DeclIterator::VisitDeclContext(DeclContext *DC, bool Indent)
@@ -1512,19 +1415,15 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         return;
     }
     StmtIterator stmtiterator(Out, Diags, ast, Rewrite, SM, langOpts, D,
-                              whitelistExceptions, referencedTypes,
-                              globalTraces);
+                              whitelistExceptions);
 
     bool has_returns = false;
     Stmt *stmt = D->getBody();
     SourceLocation function_start = getFunctionBodyStart(stmt);
-    TraceParam trace_param(Out, Diags, ast, Rewrite, referencedTypes,
-                           globalTraces);
-    TraceParam function_name_param(Out, Diags, ast, Rewrite, referencedTypes,
-                                   globalTraces);
+    TraceParam trace_param(Out, Diags, ast, Rewrite);
+    TraceParam function_name_param(Out, Diags, ast, Rewrite);
     function_name_param.setConstStr(D->getQualifiedNameAsString());
-    TraceCall trace_call(Out, Diags, ast, Rewrite, referencedTypes,
-                         globalTraces);
+    TraceCall trace_call(Out, Diags, ast, Rewrite);
     trace_call.addTraceParam(function_name_param);
     enum trace_severity severity = TRACE_SEV_FUNC_TRACE;
 
@@ -1542,15 +1441,12 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
     hasReturnStmts(stmt, has_returns);
     if (!has_returns || D->getResultType()->isVoidType()) {
         SourceLocation endLocation = stmt->getLocEnd();
-        TraceParam trace_param(Out, Diags, ast, Rewrite, referencedTypes,
-                               globalTraces);
-        TraceParam function_name_param(Out, Diags, ast, Rewrite,
-                                       referencedTypes, globalTraces);
+        TraceParam trace_param(Out, Diags, ast, Rewrite);
+        TraceParam function_name_param(Out, Diags, ast, Rewrite);
 
         function_name_param.setConstStr(D->getQualifiedNameAsString());
 
-        TraceCall trace_call(Out, Diags, ast, Rewrite, referencedTypes,
-                             globalTraces);
+        TraceCall trace_call(Out, Diags, ast, Rewrite);
         enum trace_severity severity = TRACE_SEV_FUNC_TRACE;
         trace_call.setSeverity(severity);
         trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
@@ -2009,14 +1905,11 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
     SourceLocation startLoc = S->getLocStart();
     SourceLocation onePastSemiLoc = getReturnStmtEnd(ast, Rewrite, S);
 
-    TraceParam trace_param(Out, Diags, ast, Rewrite, referencedTypes,
-                           globalTraces);
-    TraceParam function_name_param(Out, Diags, ast, Rewrite, referencedTypes,
-                                   globalTraces);
+    TraceParam trace_param(Out, Diags, ast, Rewrite);
+    TraceParam function_name_param(Out, Diags, ast, Rewrite);
     function_name_param.setConstStr(FD->getQualifiedNameAsString());
 
-    TraceCall trace_call(Out, Diags, ast, Rewrite, referencedTypes,
-                         globalTraces);
+    TraceCall trace_call(Out, Diags, ast, Rewrite);
     enum trace_severity severity = TRACE_SEV_FUNC_TRACE;
     trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
     trace_call.setSeverity(severity);
@@ -2203,14 +2096,6 @@ void StmtIterator::VisitOffsetOfExpr(OffsetOfExpr *S)
     VisitExpr(S);
 }
 
-// void StmtIterator::VisitSizeOfAlignOfExpr(SizeOfAlignOfExpr *S)
-// {
-
-//     VisitExpr(S);
-//     if (S->isArgumentType())
-//         VisitType(S->getArgumentType());
-// }
-
 void StmtIterator::VisitArraySubscriptExpr(ArraySubscriptExpr *S)
 {
 
@@ -2220,8 +2105,7 @@ void StmtIterator::VisitArraySubscriptExpr(ArraySubscriptExpr *S)
 void StmtIterator::VisitCallExpr(CallExpr *S)
 {
     // when is this triggered?
-    TraceCall trace_call(Out, Diags, ast, Rewrite, referencedTypes,
-                         globalTraces);
+    TraceCall trace_call(Out, Diags, ast, Rewrite);
     bool successfully_parsed = trace_call.fromCallExpr(S);
     if (successfully_parsed) {
         if (getCallExprFunctionName(S).compare("REPR") == 0) {
@@ -2787,8 +2671,6 @@ public:
     FileID MainFileID;
     SourceManager *SM;
     std::string InFileName;
-    std::stringstream type_definition;
-    std::stringstream global_traces;
     CompilerInstance *compilerInstance;
 
     PreCompilationLogsConsumer(StringRef inFile, raw_ostream *out,
@@ -2823,164 +2705,15 @@ public:
         return array_def.str();
     }
 
-    unsigned int getEnumMemberCount(EnumDecl *ED)
-    {
-        unsigned int member_count = 0;
-        for (EnumDecl::enumerator_iterator Enum = ED->enumerator_begin(),
-                                           EnumEnd = ED->enumerator_end();
-             Enum != EnumEnd; ++Enum) {
-            member_count++;
-        }
-
-        return member_count;
-    }
-
-    std::string getEnumMemberTraceDefinition(EnumDecl *ED,
-                                             std::string &section_name,
-                                             std::string &param_name)
-    {
-        std::stringstream enum_members;
-
-        for (EnumDecl::enumerator_iterator Enum = ED->enumerator_begin(),
-                                           EnumEnd = ED->enumerator_end();
-             Enum != EnumEnd; ++Enum) {
-            enum_members << "static char "
-                            "__attribute__((__section__(\".gnu.linkonce.type."
-                            "enum" << section_name
-                         << ".data\"))) __attribute__((aligned(1)))"
-                         << param_name + Enum->getName().data() << "_str[] = "
-                         << stringArrayDefinition(Enum->getName().data())
-                         << ";";
-        }
-
-        enum_members << "static struct trace_enum_value "
-                        "__attribute__((__section__(\".gnu.linkonce.type.enum"
-                     << section_name << ".data\"))) __attribute__((aligned(1)))"
-                     << param_name << "[] = {";
-        for (EnumDecl::enumerator_iterator Enum = ED->enumerator_begin(),
-                                           EnumEnd = ED->enumerator_end();
-             Enum != EnumEnd; ++Enum) {
-            enum_members << "{" << param_name + Enum->getName().data()
-                         << "_str, " << Enum->getInitVal().getZExtValue()
-                         << "},";
-        }
-
-        enum_members << "{0, 0}}; ";
-        return enum_members.str();
-    }
-
-    void declareEnumeralType(const EnumType *type)
-    {
-        EnumDecl *ED = type->getDecl();
-        std::string type_str
-            = normalizeTypeName(QualType(type, 0).getAsString());
-        std::string section_name
-            = typeSectionName(QualType(type, 0).getAsString());
-        std::string type_param_var_name = type_str + "_type_params";
-        std::string section_defs_attribute
-            = "__attribute__((__section__(\".gnu.linkonce.type.enum"
-              + section_name + ".defs\"))) __attribute__((aligned(1)))";
-        std::string section_ptr_attribute
-            = "__attribute__((__section__(\".gnu.linkonce.type.enum"
-              + section_name + ".ptr\"))) __attribute__((aligned(1)))";
-
-        std::string type_def_name = type_str + "_type_definition";
-        type_definition << "extern struct trace_type_definition "
-                        << type_def_name << ";";
-        type_definition << "struct trace_type_definition "
-                        << section_ptr_attribute << "* " << type_str
-                        << "_ptr = "
-                        << "&" << type_def_name << ";";
-        type_definition << getEnumMemberTraceDefinition(ED, section_name,
-                                                        type_param_var_name);
-        type_definition << "struct trace_type_definition "
-                        << section_defs_attribute << type_str
-                        << "_type_definition = {";
-        type_definition << "TRACE_TYPE_ID_ENUM, " << getEnumMemberCount(ED)
-                        << ", \"" << QualType(type, 0).getAsString() << "\", {"
-                        << type_param_var_name << "}};";
-        type_definition << "\n";
-    }
-
-    void mapType(const Type *type)
-    {
-        if (type->isEnumeralType()) {
-            const EnumType *enum_type = type->getAs<EnumType>();
-            declareEnumeralType(enum_type);
-        }
-    }
-
-    void buildNullType()
-    {
-        type_definition
-            << "void __attribute__((__section__(\".gnu.linkonce.null_type"
-               "\"))) __attribute__((aligned(1))) *null_type = 0; ";
-    }
-
-    void buildReferencedTypes()
-    {
-        std::set<const Type *>::iterator iter;
-        for (iter = referencedTypes.begin(); iter != referencedTypes.end();
-             ++iter) {
-            mapType(*iter);
-        }
-
-        buildNullType();
-    }
-
-    void buildGlobalTraces()
-    {
-        std::set<TraceCall *>::iterator iter;
-        for (iter = globalTraces.begin(); iter != globalTraces.end(); ++iter) {
-            global_traces << (*iter)->getTraceDeclaration();
-        }
-    }
-
-    void writeGlobalTraces(ASTContext &C)
-    {
-        StructFinder struct_finder;
-        RecordDecl *record_struct = struct_finder.findDeclByName(
-            C.getTranslationUnitDecl(), "trace_log_descriptor");
-        if (record_struct == NULL) {
-            exit(1);
-            return;
-        }
-
-        SourceRange range
-            = getDeclRange(SM, &C.getLangOpts(), record_struct, true);
-        Rewrite.InsertText(range.getEnd(), global_traces.str());
-    }
-
-    void writeTypeDefinitions(ASTContext &C)
-    {
-        StructFinder struct_finder;
-        RecordDecl *record_struct = struct_finder.findDeclByName(
-            C.getTranslationUnitDecl(), "trace_log_descriptor");
-        if (record_struct == NULL) {
-            exit(1);
-            return;
-        }
-
-        SourceRange range
-            = getDeclRange(SM, &C.getLangOpts(), record_struct, true);
-        Rewrite.InsertText(range.getEnd(), type_definition.str());
-    }
-
     void HandleTranslationUnit(ASTContext &C)
     {
         Rewrite.setSourceMgr(C.getSourceManager(), C.getLangOpts());
         SM = &C.getSourceManager();
         MainFileID = SM->getMainFileID();
-        DeclIterator decliterator(Out, Diags, C, &Rewrite, SM, C.getLangOpts(),
-                                  referencedTypes, globalTraces);
+        DeclIterator decliterator(Out, Diags, C, &Rewrite, SM, C.getLangOpts());
         decliterator.Visit(C.getTranslationUnitDecl());
-        buildReferencedTypes();
-        buildGlobalTraces();
         if (const RewriteBuffer *RewriteBuf
             = Rewrite.getRewriteBufferFor(MainFileID)) {
-            // @todo check what the following lines do
-            // writeGlobalTraces(C);
-            // writeTypeDefinitions(C);
             *OutFile << std::string(RewriteBuf->begin(), RewriteBuf->end());
         } else {
             StringRef buffer = SM->getBufferData(MainFileID).data();
@@ -2989,8 +2722,6 @@ public:
     }
 
 private:
-    std::set<const Type *> referencedTypes;
-    std::set<TraceCall *> globalTraces;
     Rewriter Rewrite;
 };
 
