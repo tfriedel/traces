@@ -272,8 +272,6 @@ public:
         kind = _kind;
     }
     std::string getExpansion();
-    void expand();
-    void expandWithoutDeclaration();
     std::string getTraceDeclaration();
 
     bool method_generated;
@@ -317,22 +315,9 @@ private:
                                                   unsigned int *buf_left);
     std::string constlength_commitRecord();
 
-    std::string varlength_writeSimpleValue(std::string &expression,
-                                           std::string &type_name,
-                                           bool is_pointer, bool is_reference,
-                                           const Type *type);
-    std::string varlength_commitAndAllocateRecord(enum trace_severity severity);
-    std::string varlength_getRecord(enum trace_severity severity);
-    std::string varlength_initializeTypedRecord(enum trace_severity severity);
-    std::string varlength_commitRecord();
+
     bool constantSizeTrace();
     void unknownTraceParam(const Expr *trace_param);
-
-    std::string constlength_getTraceWriteExpression();
-    std::string constlength_getFullTraceWriteExpression();
-
-    std::string varlength_getTraceWriteExpression();
-    std::string varlength_getFullTraceWriteExpression();
 };
 }
 
