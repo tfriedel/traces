@@ -269,7 +269,8 @@ def preProcess(filename, outputfilename):
 def main():
     args = sys.argv[1:]
     if '-c' not in args:
-        return ldmodwrap_main()
+        return spawn(args)
+        #return ldmodwrap_main()
 
     c_index = -1
     for (i, p) in enumerate(args):
