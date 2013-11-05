@@ -183,7 +183,13 @@ public:
             os << "expression = \"" << expression << "\", ";
         }
 
-        os << "type_name = " << type_name << ")";
+        os << "type_name = " << type_name << "\", ";
+        if (isVarString()) {
+            os << "isVarString, ";
+        }
+        if (isBuffer()) {
+            os << "isBuffer, ";
+        }
         return os.str();
     }
 
@@ -235,6 +241,7 @@ private:
     std::string getLiteralString(const Expr *expr);
     void referenceType(const Type *type);
     bool parseHexBufParam(const Expr *expr);
+    bool parseCStrTypeParam(QualType qual_type);
     bool parseStringParam(QualType type);
     bool parseStringParam(const Expr *expr);
     bool parseBasicTypeParam(QualType type);

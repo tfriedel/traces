@@ -49,21 +49,21 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #define TRACING_ENABLED std::string("true")
 #define TRACE_ENDL std::string(" << std::endl; ")
 
-#define TRACE_FUNC_ENTRY(logText, lineNo)                                      \
+#define TRACE_FUNC_ENTRY(funcName, logText, lineNo)                            \
     std::string("static int traceCounter_line_") + numberToStr(lineNo)         \
         + " = 0; bool entry_was_logged=false;\n" + std::string("if (")         \
         + TRACING_ENABLED + ")" + "{\n" + +"if (traceCounter_line_"            \
         + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"      \
-        + TRACE_LOG + std::string("<< \"--> ") + trace_call.args[0].const_str  \
+        + TRACE_LOG + std::string("<< \"--> ") + funcName                      \
         + std::string("(\" << ") + logText + std::string("<< \")\"")           \
         + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")             \
         + "}trace_increment_nesting_level();}"
 
-#define TRACE_FUNC_LEAVE(logText, lineNo)                                      \
+#define TRACE_FUNC_LEAVE(funcName, logText, lineNo)                           \
     std::string("if (") + TRACING_ENABLED + ")" + "{\n"                        \
         + "trace_decrement_nesting_level(); "                                  \
           "if (entry_was_logged)" + " {{\n" + TRACE_LOG                        \
-        + std::string("<< \"<-- ") + trace_call.args[0].const_str              \
+        + std::string("<< \"<-- ") + funcName                                 \
         + std::string("(\"") + logText + std::string("<< \")\"") + TRACE_ENDL  \
         + "}}"
 
@@ -71,6 +71,9 @@ using namespace clang;
 
 namespace
 {
+static bool printFlags = true;
+//static bool printFlags = false;
+
 static const Type *get_expr_type(const Expr *expr)
 {
     return expr->getType().getCanonicalType().split().Ty;
@@ -145,6 +148,13 @@ static std::string escapeString(std::string const &s)
     return b.str();
 }
 
+static std::string printAisB(const std::string &a, const std::string &b) {
+    std::stringstream serialized;
+    serialized << "\"" << escapeString(a) << ": \""
+               << " << (" << b << ")";
+    return serialized.str();
+}
+
 static std::string normalizeTypeName(std::string type_str)
 {
     std::string replaced = replaceAll(type_str, " ", "_");
@@ -198,6 +208,28 @@ static SourceLocation getReturnStmtEnd(ASTContext &ast, Rewriter *Rewrite,
     const char *semiBuf = strchr(startBuf + Size, ';');
     assert((*semiBuf == ';') && "getReturnStmtEnd(): can't find ';'");
     return startLoc.getLocWithOffset(semiBuf - startBuf + 1);
+}
+
+bool TraceParam::parseCStrTypeParam(QualType qual_type) {
+    type = qual_type.split().Ty;
+    if (type->isPointerType()) {
+            const Type *pointeeType = type->getPointeeType().split().Ty;
+            if (!(pointeeType->isBuiltinType())) {
+                return false;
+            } else {
+                const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
+                if (BT->isCharType()) {
+                    flags |= TRACE_PARAM_FLAG_CSTR;
+                    size = ast.getTypeSize(type) / 8;
+                    type_name = QualType(qual_type.split().Ty, 0).getAsString();
+                    is_pointer = true;
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+    }
+    return false;
 }
 
 bool TraceParam::parseBasicTypeParam(QualType qual_type)
@@ -365,6 +397,8 @@ std::string TraceCall::genMIN(std::string &a, std::string &b)
     return code.str();
 }
 
+
+
 std::string TraceCall::constlength_writeSimpleValue(
     std::string &expression, std::string &type_name, bool is_pointer,
     bool is_reference, unsigned int value_size, const Type *type)
@@ -385,8 +419,7 @@ std::string TraceCall::constlength_writeSimpleValue(
         } else {
             new_expression << "(" << expression << ")";
         }
-        serialized << "\"" << escapeString(expression) << ": \""
-                   << " << (" << new_expression.str() << ")";
+        serialized << printAisB(expression, new_expression.str());
     } else if (is_reference || is_pointer) {
         serialized << "\"" << escapeString(expression) << ": \""
                    << " << (";
@@ -447,20 +480,29 @@ std::string TraceCall::getExpansion()
     std::stringstream start_record;
     std::vector<std::string> parameters;
     for (unsigned int i = 0; i < args.size(); i++) {
-        TraceParam &param = args[i];
-
+        TraceParam &param = args[i];        
+//        if ((param.flags & TRACE_PARAM_FLAG_CSTR)) {
+//            std::string paramStr = printAisB(param.expression, param.expression);
+//            std::stringstream ss;
+//            if (printFlags) {
+//                ss  << "\"" << escapeString(param.asString()) << "\"";
+//            }
+//            paramStr = ss.str() + paramStr;
+//            parameters.push_back(paramStr);
+//            continue;
+//        } else
         if (param.isSimple() || param.isVarString()) {
             std::string paramStr = constlength_writeSimpleValue(
                 param.expression, param.type_name, param.is_pointer,
                 param.is_reference, param.size, param.type);
             std::stringstream ss;
-
-            paramStr = escapeString(ss.str()) + paramStr;
+            if (printFlags) {
+                ss  << "\"" << escapeString(param.asString()) << "\"";
+            }
+            paramStr = ss.str() + paramStr;
             parameters.push_back(paramStr);
             continue;
-        }
-
-        if (param.isBuffer()) {
+        } else if (param.isBuffer()) {
             start_record.str("");
             start_record << " << \"" << param.expression << ": \""
                          << "[buffer]";
@@ -803,6 +845,9 @@ static std::string getCallExprFunctionName(const CallExpr *CE)
 bool TraceParam::fromType(QualType type, bool fill_unknown_type)
 {
     QualType canonical_type = type.getCanonicalType();
+//    if (parseCStrTypeParam(canonical_type)) {
+//        return true;
+//    } else
     if (parseEnumTypeParam(canonical_type)) {
         return true;
     } else if (parseBasicTypeParam(canonical_type)) {
@@ -832,7 +877,6 @@ bool TraceParam::fromExpr(const Expr *trace_param, bool deref_pointer)
     } else if (parseBasicTypeParam(trace_param)) {
         return true;
     }
-
     return false;
 }
 
@@ -1084,11 +1128,12 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         trace_call.addTraceParam(function_name_param);
         Rewrite->ReplaceText(
             endLocation, 1,
-            TRACE_FUNC_LEAVE(trace_call.getExpansion(),
+            TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
                              SM->getPresumedLineNumber(function_start))
             + std::string("}}"));
     }
 
+    // handle function parameters
     for (FunctionDecl::param_const_iterator I = D->param_begin(),
                                             E = D->param_end();
          I != E; ++I) {
@@ -1097,7 +1142,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
             continue;
         }
         bool was_parsed
-            = trace_param.fromType((*I)->getType().getCanonicalType(), true);
+            = trace_param.fromType((*I)->getType().getCanonicalType(), true);        
         if (!was_parsed) {
             stmtiterator.Visit(D->getBody());
             return;
@@ -1110,7 +1155,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
 
     Rewrite->InsertText(
         function_start,
-        TRACE_FUNC_ENTRY(trace_call.getExpansion(),
+        TRACE_FUNC_ENTRY(function_name_param.const_str, trace_call.getExpansion(),
                          SM->getPresumedLineNumber(function_start)),
         true);
 exit:
@@ -1560,7 +1605,7 @@ expand:
     Stmt *stmt = FD->getBody();
     SourceLocation function_start = getFunctionBodyStart(stmt);
     Rewrite->ReplaceText(
-        startLoc, 6, TRACE_FUNC_LEAVE(trace_call.getExpansion(),
+        startLoc, 6, TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
                                       SM->getPresumedLineNumber(function_start))
                      + " return ");
     return;
