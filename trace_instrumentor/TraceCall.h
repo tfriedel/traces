@@ -306,14 +306,10 @@ private:
                                              std::string &type_name,
                                              bool is_pointer, bool is_reference,
                                              unsigned int size,
-                                             const Type *type);
-    std::string
-    constlength_commitAndAllocateRecord(enum trace_severity severity,
-                                        unsigned int *buf_left);
+                                             const Type *type);    
     std::string constlength_getRecord(enum trace_severity severity);
     std::string constlength_initializeTypedRecord(enum trace_severity severity,
-                                                  unsigned int *buf_left);
-    std::string constlength_commitRecord();
+                                                  unsigned int *buf_left);    
 
 
     bool constantSizeTrace();

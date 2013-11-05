@@ -427,14 +427,6 @@ void TraceCall::replaceExpr(const Expr *expr, std::string replacement)
     Rewrite->ReplaceText(expr->getLocStart(), size, replacement);
 }
 
-std::string TraceCall::constlength_commitRecord()
-{
-    return "__builtin_memcpy("
-           + castTo(ast.getLangOpts(), "_record_ptr", "char *") + ", "
-           + castTo(ast.getLangOpts(), "&_record", "char *")
-           + ", sizeof(struct trace_record));";
-}
-
 
 
 std::string TraceCall::constlength_getRecord(enum trace_severity severity)
@@ -462,18 +454,6 @@ TraceCall::constlength_initializeTypedRecord(enum trace_severity severity,
     code << "_record.u.typed.log_id = &tracelog - "
             "&__static_log_information_start;";
     (*buf_left) = TRACE_RECORD_PAYLOAD_SIZE - 4;
-    return code.str();
-}
-
-std::string
-TraceCall::constlength_commitAndAllocateRecord(enum trace_severity severity,
-                                               unsigned int *buf_left)
-{
-    std::stringstream code;
-    code << constlength_commitRecord();
-    code << constlength_getRecord(severity);
-    code << "_record.termination = 0;";
-    (*buf_left) = TRACE_RECORD_PAYLOAD_SIZE;
     return code.str();
 }
 
@@ -1910,17 +1890,6 @@ void StmtIterator::VisitArraySubscriptExpr(ArraySubscriptExpr *S)
 
 void StmtIterator::VisitCallExpr(CallExpr *S)
 {
-//    // when is this triggered?
-//    TraceCall trace_call(Out, Diags, ast, Rewrite);
-//    bool successfully_parsed = trace_call.fromCallExpr(S);
-//    if (successfully_parsed) {
-//        if (getCallExprFunctionName(S).compare("REPR") == 0) {
-//            trace_call.expandWithoutDeclaration();
-//        } else {
-//            trace_call.expand();
-//        }
-//    }
-
     VisitExpr(S);
 }
 
