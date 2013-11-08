@@ -44,7 +44,7 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <set>
 
 #define TRACE_LOG                                                              \
-    std::string("std::cout << std::string(4*trace_get_nesting_level()%40, ' "  \
+    std::string("std::cout << \"" + cpp_filename + ": \" << std::string(4*trace_get_nesting_level()%40, ' "  \
                 "')")
 #define TRACING_ENABLED std::string("true")
 #define TRACE_ENDL std::string(" << std::endl; ")
@@ -73,6 +73,7 @@ namespace
 {
 //static bool printFlags = true;
 static bool printFlags = false;
+static std::string cpp_filename = "";
 
 static const Type *get_expr_type(const Expr *expr)
 {
@@ -2337,7 +2338,7 @@ public:
     raw_ostream *OutFile;
     FileID MainFileID;
     SourceManager *SM;
-    std::string InFileName;
+    std::string InFileName;    
     CompilerInstance *compilerInstance;
 
     PreCompilationLogsConsumer(StringRef inFile, raw_ostream *out,
@@ -2405,7 +2406,7 @@ class InstrumentCodeAction : public PluginASTAction
 private:
     raw_ostream *OS;
     StringRef InFile;
-    CompilerInstance *CI;
+    CompilerInstance *CI;    
 
 protected:
     ASTConsumer *CreateASTConsumer(CompilerInstance &CI, llvm::StringRef InFile)
@@ -2420,6 +2421,12 @@ protected:
     bool ParseArgs(const CompilerInstance &CI,
                    const std::vector<std::string> &args)
     {
+        if (args.size()) {
+            // current filename
+            cpp_filename = args[0];
+        } else {
+            cpp_filename = InFile.str();
+        }
         return true;
     }
 

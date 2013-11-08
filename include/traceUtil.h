@@ -6,6 +6,9 @@
 #include <string>
 #include <stdio.h>
 #include <pthread.h>
+
+#define TRACE_CURRENT_FILENAME __TRACE_SOURCE_FILENAME
+
 //static unsigned short trace_current_nesting;
 extern __thread  unsigned short trace_current_nesting;
 static int defaultMaxLogCallsPerFunction = 10;
@@ -52,6 +55,11 @@ namespace tracer {
     static std::string float_to_hex( int d )
     {        
         return float_to_hex(static_cast<float>(d));
+    }
+
+    static std::string getCurrentThreadName() {
+        //boost::this_thread::get_id()
+        return NULL;
     }
 }
 

@@ -18,11 +18,9 @@
 
 import sys
 import os
-import re
 import subprocess
 import errno
 
-from ldwrap import main as ldmodwrap_main
 plugin_path = os.getenv('TRACE_INSTRUMENTOR',
                         os.path.join(os.path.dirname(sys.argv[0]),
                         'trace_instrumentor/trace_instrumentor.so'))
@@ -55,6 +53,7 @@ def make_sure_path_exists(path):
             raise
 
 def translate(
+    orig_c_file_basename,
     pp_file,
     out_pp_file,
     language,
@@ -95,7 +94,7 @@ def translate(
 
     args.extend(arch_triplet)
     args.extend(cflags)
-    args.extend(['-load', plugin_path, '-plugin', 'trace-instrument'])
+    args.extend(['-load', plugin_path, '-plugin', 'trace-instrument', "-plugin-arg-trace-instrument", orig_c_file_basename])
     try:
         print 'running clang :', " ".join(args)
         output = subprocess.check_output(args, stderr=subprocess.STDOUT)
@@ -109,6 +108,7 @@ def translate(
 
 
 def translate_no_gcc(
+    orig_c_file_basename,
     pp_file,
     out_pp_file,
     language,
@@ -150,6 +150,10 @@ def translate_no_gcc(
         '-plugin',
         '-Xclang',
         'trace-instrument',
+        '-Xclang',
+        "-plugin-arg-trace-instrument",
+        '-Xclang',
+        orig_c_file_basename
         ])
     try:
         print 'running clang :', ' '.join(args)
@@ -185,6 +189,7 @@ def get_arch_triplet(compiler):
 
 
 def maybe_translate(
+    orig_c_file_basename,
     pp_file,
     out_pp_file,
     language,
@@ -193,7 +198,7 @@ def maybe_translate(
     ):
 
     try:
-        return translate(pp_file, out_pp_file, language, arch_triplet,
+        return translate(orig_c_file_basename, pp_file, out_pp_file, language, arch_triplet,
                          cflags)
     except Error, e:
         print e.args[0]
@@ -201,6 +206,7 @@ def maybe_translate(
 
 
 def maybe_translate_no_gcc(
+    orig_c_file_basename,
     pp_file,
     out_pp_file,
     language,
@@ -209,7 +215,7 @@ def maybe_translate_no_gcc(
     ):
 
     try:
-        return translate_no_gcc(pp_file, out_pp_file, language,
+        return translate_no_gcc(orig_c_file_basename, pp_file, out_pp_file, language,
                                 arch_triplet, cflags)
     except Error, e:
         print e.args[0]
@@ -311,6 +317,7 @@ def main():
     # preprocess c++ file, insert trace counter etc
 
     orig_c_file = c_file
+    orig_c_file_basename = os.path.basename(orig_c_file)
     if not use_includes:
         c_file = pp_file + '.pre.cpp'
         preProcess(orig_c_file, c_file)
@@ -345,7 +352,7 @@ def main():
 
     clang_args[clang_args.index(pp_file)] = output_c_file
     cpp_args.extend(['-C'])
-    clang_ret = maybe_translate_no_gcc(c_file, out_pp_file + '.out',
+    clang_ret = maybe_translate_no_gcc(orig_c_file_basename, c_file, out_pp_file + '.out',
             language, get_arch_triplet(args[0]), clang_args)
     preProcess(output_c_file, output_c_file)
     #if clang_ret != 0:
@@ -356,7 +363,7 @@ def main():
     clang_ret = 0
 
     try:
-        clang_ret = maybe_translate(pp_file, out_pp_file, language,
+        clang_ret = maybe_translate(orig_c_file_basename, pp_file, out_pp_file, language,
                                     get_arch_triplet(args[0]), cflags)
         if clang_ret != 0:
             return -1
