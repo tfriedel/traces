@@ -5,28 +5,65 @@
 #include <iostream>
 #include <string>
 #include <stdio.h>
-#include <pthread.h>
+#include <iomanip>
+//#include <pthread.h>
+#ifndef __ADSPBLACKFIN__
+#include "boost/thread/tss.hpp"
+extern boost::thread_specific_ptr<unsigned short> trace_current_nesting_ptr;
+#else
+#include "VdkTLS.h"
+#define TLS VdkTLS
+extern TLS<unsigned short> trace_current_nesting;
+#endif
 
 #define TRACE_CURRENT_FILENAME __TRACE_SOURCE_FILENAME
 
 //static unsigned short trace_current_nesting;
-extern __thread  unsigned short trace_current_nesting;
+//extern __thread  unsigned short trace_current_nesting;
+
+
 static int defaultMaxLogCallsPerFunction = 10;
 
+#ifndef __ADSPBLACKFIN__
 static inline void trace_increment_nesting_level(void)
 {
-    trace_current_nesting++;
+    if(!trace_current_nesting_ptr.get())
+    {
+       trace_current_nesting_ptr.reset(new unsigned short(0));
+    }
+    *trace_current_nesting_ptr += 1;
 }
 
 static inline void trace_decrement_nesting_level(void)
 {
-    trace_current_nesting--;
+    assert(trace_current_nesting_ptr.get() != NULL);
+    *trace_current_nesting_ptr -= 1;
+}
+
+static inline unsigned short trace_get_nesting_level(void)
+{
+    if(!trace_current_nesting_ptr.get())
+    {
+       trace_current_nesting_ptr.reset(new unsigned short(0));
+    }
+    return *trace_current_nesting_ptr;
+}
+#else
+static inline void trace_increment_nesting_level(void)
+{
+    trace_current_nesting += 1;
+}
+
+static inline void trace_decrement_nesting_level(void)
+{
+    trace_current_nesting -= 1;
 }
 
 static inline unsigned short trace_get_nesting_level(void)
 {
     return trace_current_nesting;
 }
+#endif
 
 namespace tracer {
     __attribute__((no_instrument_function))

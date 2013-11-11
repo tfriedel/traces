@@ -44,7 +44,7 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <set>
 
 #define TRACE_LOG                                                              \
-    std::string("std::cout << \"" + cpp_filename + ": \" << std::string(4*trace_get_nesting_level()%40, ' "  \
+    std::string("std::cout << std::setw(25) << \"" + cpp_filename + ": \" << std::string(4*trace_get_nesting_level()%40, ' "  \
                 "')")
 #define TRACING_ENABLED std::string("true")
 #define TRACE_ENDL std::string(" << std::endl; ")
