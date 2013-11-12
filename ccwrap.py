@@ -24,7 +24,7 @@ import errno
 plugin_path = os.getenv('TRACE_INSTRUMENTOR',
                         os.path.join(os.path.dirname(sys.argv[0]),
                         'trace_instrumentor/trace_instrumentor.so'))
-clang_path = os.getenv('TRACE_CLANG_PATH', 'clang')
+clang_path = os.getenv('TRACE_CLANG_PATH', 'clang-3.1')
 
 print 'starting ccwrap.py'
 print 'plugin_path = %s' % (plugin_path, )

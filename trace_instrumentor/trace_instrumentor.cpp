@@ -43,35 +43,32 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <string>
 #include <set>
 
-#define TRACE_LOG                                                              \
-    std::string("std::cout << std::setw(25) << \"" + cpp_filename + ": \" << std::string(4*trace_get_nesting_level()%40, ' "  \
-                "')")
+#define TRACE_LOG                                                                                            \
+    std::string("std::cout << std::setw(25) << \"" + cpp_filename                                            \
+                + ": \" << std::string(4*trace_get_nesting_level()%40, ' "                                   \
+                  "')")
 #define TRACING_ENABLED std::string("true")
 #define TRACE_ENDL std::string(" << std::endl; ")
 
-#define TRACE_FUNC_ENTRY(funcName, logText, lineNo)                            \
-    std::string("static int traceCounter_line_") + numberToStr(lineNo)         \
-        + " = 0; bool entry_was_logged=false;\n" + std::string("if (")         \
-        + TRACING_ENABLED + ")" + "{\n" + +"if (traceCounter_line_"            \
-        + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"      \
-        + TRACE_LOG + std::string("<< \"--> ") + funcName                      \
-        + std::string("(\" << ") + logText + std::string("<< \")\"")           \
-        + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")             \
+#define TRACE_FUNC_ENTRY(funcName, logText, lineNo)                                                          \
+    std::string("static int traceCounter_line_") + numberToStr(lineNo)                                       \
+        + " = 0; bool entry_was_logged=false;\n" + std::string("if (") + TRACING_ENABLED + ")" + "{\n"       \
+        + +"if (traceCounter_line_" + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"        \
+        + TRACE_LOG + std::string("<< \"--> ") + funcName + std::string("(\" << ") + logText                 \
+        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")                 \
         + "}trace_increment_nesting_level();}"
 
-#define TRACE_FUNC_LEAVE(funcName, logText, lineNo)                           \
-    std::string("if (") + TRACING_ENABLED + ")" + "{\n"                        \
-        + "trace_decrement_nesting_level(); "                                  \
-          "if (entry_was_logged)" + " {{\n" + TRACE_LOG                        \
-        + std::string("<< \"<-- ") + funcName                                 \
-        + std::string("(\"") + logText + std::string("<< \")\"") + TRACE_ENDL  \
-        + "}}"
+#define TRACE_FUNC_LEAVE(funcName, logText, lineNo)                                                          \
+    std::string("if (") + TRACING_ENABLED + ")" + "{\n" + "trace_decrement_nesting_level(); "                \
+                                                          "if (entry_was_logged)" + " {{\n" + TRACE_LOG      \
+        + std::string("<< \"<-- ") + funcName + std::string("(\"") + logText + std::string("<< \")\"")       \
+        + TRACE_ENDL + "}}"
 
 using namespace clang;
 
 namespace
 {
-//static bool printFlags = true;
+// static bool printFlags = true;
 static bool printFlags = false;
 static std::string cpp_filename = "";
 
@@ -82,12 +79,10 @@ static const Type *get_expr_type(const Expr *expr)
 
 static inline std::string numberToStr(int Number)
 {
-    return static_cast
-        <std::ostringstream *>(&(std::ostringstream() << Number))->str();
+    return static_cast<std::ostringstream *>(&(std::ostringstream() << Number))->str();
 }
 
-std::string castTo(LangOptions const &langOpts, std::string orig_expr,
-                   std::string cast_type)
+std::string castTo(LangOptions const &langOpts, std::string orig_expr, std::string cast_type)
 {
     if (langOpts.CPlusPlus == 1) {
         return "reinterpret_cast<" + cast_type + ">(" + orig_expr + ")";
@@ -114,8 +109,7 @@ static std::string escapeString(std::string const &s)
 {
     std::stringstream b;
     // b << "\"";
-    for (std::string::const_iterator i = s.begin(), end = s.end(); i != end;
-         ++i) {
+    for (std::string::const_iterator i = s.begin(), end = s.end(); i != end; ++i) {
         unsigned char c = *i;
         if (' ' <= c and c <= '~' and c != '\\' and c != '"') {
             b << c;
@@ -149,7 +143,8 @@ static std::string escapeString(std::string const &s)
     return b.str();
 }
 
-static std::string printAisB(const std::string &a, const std::string &b) {
+static std::string printAisB(const std::string &a, const std::string &b)
+{
     std::stringstream serialized;
     if (b.length() > 0) {
         serialized << "\"" << escapeString(a) << ": \""
@@ -164,8 +159,7 @@ static std::string normalizeTypeName(std::string type_str)
     return replaceAll(replaced, ":", "_");
 }
 
-static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite,
-                                  const clang::Stmt *S)
+static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite, const clang::Stmt *S)
 {
     SourceManager *SM = &ast.getSourceManager();
     int Size = Rewrite->getRangeSize(S->getSourceRange());
@@ -175,6 +169,34 @@ static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite,
 
     const char *startBuf = SM->getCharacterData(S->getLocStart());
     return std::string(startBuf, Size);
+}
+
+static std::string getString(const SourceLocation &loc, const SourceManager *SM)
+{
+    std::string S2;
+    llvm::raw_string_ostream OS(S2);
+    loc.print(OS, *SM);
+    return OS.str();
+}
+// Pair of start, end positions in the source.
+typedef std::pair<unsigned, unsigned> SrcRange;
+
+// Get the the location of the next semicolon following a statement
+SourceLocation getNextSemicolon(const clang::Stmt *S, const clang::SourceManager *sm,
+                                const clang::LangOptions &options)
+{
+    clang::SourceLocation ELoc = sm->getExpansionLoc(S->getLocEnd());
+    // Below code copied from clang::Lexer::MeasureTokenLength():
+    clang::SourceLocation Loc = sm->getExpansionLoc(ELoc);
+    std::pair<clang::FileID, unsigned> LocInfo = sm->getDecomposedLoc(Loc);
+    llvm::StringRef Buffer = sm->getBufferData(LocInfo.first);
+    const char *StrData = Buffer.data() + LocInfo.second;
+    clang::Lexer TheLexer(Loc, options, Buffer.begin(), StrData, Buffer.end());
+    clang::Token TheTok;
+    TheLexer.LexFromRawLexer(TheTok);
+    SourceLocation semicolonLoc
+        = TheLexer.findLocationAfterToken(S->getLocEnd(), clang::tok::semi, *sm, options, false);
+    return semicolonLoc;
 }
 
 void hasReturnStmts(Stmt *S, bool &hasReturns)
@@ -188,49 +210,33 @@ void hasReturnStmts(Stmt *S, bool &hasReturns)
     return;
 }
 
-static SourceLocation getReturnStmtEnd(ASTContext &ast, Rewriter *Rewrite,
-                                       ReturnStmt *S)
+static SourceLocation getReturnStmtEnd(ASTContext &ast, Rewriter *Rewrite, ReturnStmt *S,
+                                       LangOptions &langOpts)
 {
-    const Expr *retValue = S->getRetValue();
-    SourceLocation startLoc;
-    if (NULL != retValue) {
-        startLoc = retValue->getLocStart();
-    } else {
-        startLoc = S->getLocStart();
-    }
-
     SourceManager *SM = &ast.getSourceManager();
-    int Size;
-    if (retValue != NULL) {
-        Size = Rewrite->getRangeSize(retValue->getSourceRange());
-    } else {
-        Size = Rewrite->getRangeSize(S->getSourceRange());
-    }
-
-    const char *startBuf = SM->getCharacterData(startLoc);
-    const char *semiBuf = strchr(startBuf + Size, ';');
-    assert((*semiBuf == ';') && "getReturnStmtEnd(): can't find ';'");
-    return startLoc.getLocWithOffset(semiBuf - startBuf + 1);
+    SourceLocation semiLoc = getNextSemicolon(S, SM, langOpts);
+    return semiLoc;
 }
 
-bool TraceParam::parseCStrTypeParam(QualType qual_type) {
+bool TraceParam::parseCStrTypeParam(QualType qual_type)
+{
     type = qual_type.split().Ty;
     if (type->isPointerType()) {
-            const Type *pointeeType = type->getPointeeType().split().Ty;
-            if (!(pointeeType->isBuiltinType())) {
-                return false;
+        const Type *pointeeType = type->getPointeeType().split().Ty;
+        if (!(pointeeType->isBuiltinType())) {
+            return false;
+        } else {
+            const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
+            if (BT->isCharType()) {
+                flags |= TRACE_PARAM_FLAG_CSTR;
+                size = ast.getTypeSize(type) / 8;
+                type_name = QualType(qual_type.split().Ty, 0).getAsString();
+                is_pointer = true;
+                return true;
             } else {
-                const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
-                if (BT->isCharType()) {
-                    flags |= TRACE_PARAM_FLAG_CSTR;
-                    size = ast.getTypeSize(type) / 8;
-                    type_name = QualType(qual_type.split().Ty, 0).getAsString();
-                    is_pointer = true;
-                    return true;
-                } else {
-                    return false;
-                }
+                return false;
             }
+        }
     }
     return false;
 }
@@ -373,9 +379,7 @@ bool TraceParam::parseEnumTypeParam(const Expr *expr)
         return false;
     }
 
-    if (!parseEnumTypeParam(stripped_expr->getType()
-                                .getCanonicalType()
-                                .getUnqualifiedType())) {
+    if (!parseEnumTypeParam(stripped_expr->getType().getCanonicalType().getUnqualifiedType())) {
         return false;
     }
 
@@ -383,7 +387,6 @@ bool TraceParam::parseEnumTypeParam(const Expr *expr)
 
     return true;
 }
-
 
 void TraceCall::replaceExpr(const Expr *expr, std::string replacement)
 {
@@ -400,11 +403,9 @@ std::string TraceCall::genMIN(std::string &a, std::string &b)
     return code.str();
 }
 
-
-
-std::string TraceCall::constlength_writeSimpleValue(
-    std::string &expression, std::string &type_name, bool is_pointer,
-    bool is_reference, unsigned int value_size, const Type *type)
+std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std::string &type_name,
+                                                    bool is_pointer, bool is_reference,
+                                                    unsigned int value_size, const Type *type)
 {
     std::stringstream serialized;
     if (!is_reference && !is_pointer) {
@@ -413,11 +414,9 @@ std::string TraceCall::constlength_writeSimpleValue(
             new_expression << "(tracer::float_to_hex(" << expression << "))";
         } else if (type->isCharType()) {
             if (type->isSignedIntegerType()) {
-                new_expression << "(static_cast<int>(" << expression
-                               << ") & 0xFFFF)";
+                new_expression << "(static_cast<int>(" << expression << ") & 0xFFFF)";
             } else {
-                new_expression << "(static_cast<unsigned int>(" << expression
-                               << ") & 0xFFFF)";
+                new_expression << "(static_cast<unsigned int>(" << expression << ") & 0xFFFF)";
             }
         } else {
             new_expression << "(" << expression << ")";
@@ -444,8 +443,7 @@ std::string TraceCall::constlength_writeSimpleValue(
                     // if (BT->getKind() == BuiltinType::Double) {
                     if (BT->isFloatingPoint()) {
                         int size = ast.getTypeSize(type) / 8;
-                        std::string type_name
-                            = QualType(pointeeType, 0).getAsString();
+                        std::string type_name = QualType(pointeeType, 0).getAsString();
                         floatingPointType = true;
                     } else if (pointeeType->isIntegerType()) {
                         integerType = true;
@@ -464,8 +462,7 @@ std::string TraceCall::constlength_writeSimpleValue(
                 }
                 new_expression << expression;
                 if (floatingPointType) {
-                    serialized << "tracer::float_to_hex("
-                               << new_expression.str() << "))";
+                    serialized << "tracer::float_to_hex(" << new_expression.str() << "))";
                 } else {
                     serialized << new_expression.str() << ")";
                 }
@@ -483,24 +480,23 @@ std::string TraceCall::getExpansion()
     std::stringstream start_record;
     std::vector<std::string> parameters;
     for (unsigned int i = 0; i < args.size(); i++) {
-        TraceParam &param = args[i];        
+        TraceParam &param = args[i];
         if ((param.flags & TRACE_PARAM_FLAG_CSTR)) {
             std::string paramStr = printAisB(param.expression, param.expression);
             std::stringstream ss;
             if (printFlags) {
-                ss  << "\"" << escapeString(param.asString()) << "\"";
+                ss << "\"" << escapeString(param.asString()) << "\"";
             }
             paramStr = ss.str() + paramStr;
             parameters.push_back(paramStr);
             continue;
-        } else
-        if (param.isSimple() || param.isVarString()) {
-            std::string paramStr = constlength_writeSimpleValue(
-                param.expression, param.type_name, param.is_pointer,
-                param.is_reference, param.size, param.type);
+        } else if (param.isSimple() || param.isVarString()) {
+            std::string paramStr
+                = constlength_writeSimpleValue(param.expression, param.type_name, param.is_pointer,
+                                               param.is_reference, param.size, param.type);
             std::stringstream ss;
             if (printFlags) {
-                ss  << "\"" << escapeString(param.asString()) << "\"";
+                ss << "\"" << escapeString(param.asString()) << "\"";
             }
             paramStr = ss.str() + paramStr;
             parameters.push_back(paramStr);
@@ -517,8 +513,7 @@ std::string TraceCall::getExpansion()
     start_record.str("");
     int i = 0;
     bool empty = true;
-    for (std::vector<std::string>::iterator it = parameters.begin();
-         it != parameters.end(); ++it, ++i) {
+    for (std::vector<std::string>::iterator it = parameters.begin(); it != parameters.end(); ++it, ++i) {
 
         start_record << *it;
         empty = false;
@@ -558,8 +553,7 @@ public:
         }
     }
 
-    CallExpr *functionHasFunctionCall(Stmt *body, std::string _function_name,
-                                      int *_call_count)
+    CallExpr *functionHasFunctionCall(Stmt *body, std::string _function_name, int *_call_count)
     {
         function_name = _function_name;
         CE = NULL;
@@ -619,9 +613,7 @@ public:
 
     void VisitDeclContext(DeclContext *DC)
     {
-        for (DeclContext::decl_iterator D = DC->decls_begin(),
-                                        DEnd = DC->decls_end();
-             D != DEnd; ++D) {
+        for (DeclContext::decl_iterator D = DC->decls_begin(), DEnd = DC->decls_end(); D != DEnd; ++D) {
             Visit(*D);
         }
     }
@@ -653,15 +645,12 @@ bool TraceParam::parseClassTypeParam(const Expr *expr)
         return false;
     }
 
-    CXXRecordDecl *RD = cast
-        <CXXRecordDecl>(pointeeType->getAs<RecordType>()->getDecl());
+    CXXRecordDecl *RD = cast<CXXRecordDecl>(pointeeType->getAs<RecordType>()->getDecl());
     CXXMethodDecl *MD = NULL;
-    for (CXXRecordDecl::method_iterator method = RD->method_begin();
-         method != RD->method_end(); ++method) {
+    for (CXXRecordDecl::method_iterator method = RD->method_begin(); method != RD->method_end(); ++method) {
         if (method->getNameAsString().compare("_trace_represent") == 0) {
             if (!method->hasInlineBody()) {
-                Diags.Report(ast.getFullLoc(method->getLocStart()),
-                             NonInlineTraceRepresentDiag)
+                Diags.Report(ast.getFullLoc(method->getLocStart()), NonInlineTraceRepresentDiag)
                     << method->getSourceRange();
                 return false;
             }
@@ -677,39 +666,37 @@ bool TraceParam::parseClassTypeParam(const Expr *expr)
 
     FunctionCallerFinder finder;
     int call_count;
-    CallExpr *call_expr
-        = finder.functionHasFunctionCall(MD->getBody(), "REPR", &call_count);
+    CallExpr *call_expr = finder.functionHasFunctionCall(MD->getBody(), "REPR", &call_count);
     if (call_expr == NULL) {
         return false;
     }
 
     if (call_count > 1) {
-        Diags.Report(ast.getFullLoc(call_expr->getLocStart()),
-                     MultipleReprCallsDiag)
+        Diags.Report(ast.getFullLoc(call_expr->getLocStart()), MultipleReprCallsDiag)
             << call_expr->getSourceRange();
     }
 
     return false;
-//    TraceCall *_trace_call = new TraceCall(Out, Diags, ast, Rewrite);
-//    if (!_trace_call->fromCallExpr(call_expr)) {
-//        return false;
-//    }
+    //    TraceCall *_trace_call = new TraceCall(Out, Diags, ast, Rewrite);
+    //    if (!_trace_call->fromCallExpr(call_expr)) {
+    //        return false;
+    //    }
 
-//    trace_call = _trace_call;
-//    // TODO: Unique name, don't add duplicate logs
-//    std::string _type_name
-//        = normalizeTypeName(QualType(pointeeType, 0).getAsString());
-//    std::stringstream trace_call_name;
-//    trace_call_name << _type_name;
-//    trace_call_name << "_tracelog";
-//    trace_call->trace_call_name = trace_call_name.str();
-//    method_generated = true;
-//    flags |= TRACE_PARAM_FLAG_NESTED_LOG;
-//    expression = "(" + getLiteralExpr(ast, Rewrite, expr)
-//                 + ")->_trace_represent";
-//    type_name = QualType(pointeeType, 0).getAsString();
+    //    trace_call = _trace_call;
+    //    // TODO: Unique name, don't add duplicate logs
+    //    std::string _type_name
+    //        = normalizeTypeName(QualType(pointeeType, 0).getAsString());
+    //    std::stringstream trace_call_name;
+    //    trace_call_name << _type_name;
+    //    trace_call_name << "_tracelog";
+    //    trace_call->trace_call_name = trace_call_name.str();
+    //    method_generated = true;
+    //    flags |= TRACE_PARAM_FLAG_NESTED_LOG;
+    //    expression = "(" + getLiteralExpr(ast, Rewrite, expr)
+    //                 + ")->_trace_represent";
+    //    type_name = QualType(pointeeType, 0).getAsString();
 
-//    return true;
+    //    return true;
 }
 
 bool TraceParam::parseHexBufParam(const Expr *expr)
@@ -724,10 +711,9 @@ bool TraceParam::parseHexBufParam(const Expr *expr)
         return false;
     }
 
-    const Type *pointeeType
-        = type->getPointeeType().IgnoreParens().getTypePtr();
-    if (pointeeType->getTypeClass() != Type::VariableArray
-        && pointeeType->getTypeClass() != Type::ConstantArray) {
+    const Type *pointeeType = type->getPointeeType().IgnoreParens().getTypePtr();
+    if (pointeeType->getTypeClass() != Type::VariableArray && pointeeType->getTypeClass()
+                                                              != Type::ConstantArray) {
         return false;
     }
 
@@ -736,15 +722,14 @@ bool TraceParam::parseHexBufParam(const Expr *expr)
         return false;
     }
 
-    const TypedefType *TDP = dyn_cast
-        <TypedefType>(A->getElementType().split().Ty);
+    const TypedefType *TDP = dyn_cast<TypedefType>(A->getElementType().split().Ty);
     const TypedefNameDecl *decl = TDP->getDecl();
     if (decl->getDeclName().getAsString().compare("hex_t") != 0) {
         return false;
     }
 
-    flags |= TRACE_PARAM_FLAG_UNSIGNED | TRACE_PARAM_FLAG_VARRAY
-             | TRACE_PARAM_FLAG_NUM_8 | TRACE_PARAM_FLAG_HEX;
+    flags |= TRACE_PARAM_FLAG_UNSIGNED | TRACE_PARAM_FLAG_VARRAY | TRACE_PARAM_FLAG_NUM_8
+             | TRACE_PARAM_FLAG_HEX;
 
     if (isa<VariableArrayType>(A)) {
         const VariableArrayType *VAT = dyn_cast<VariableArrayType>(A);
@@ -808,8 +793,7 @@ bool TraceParam::parseStringParam(const Expr *expr)
             const_str = literalString;
             return true;
         } else {
-            Diags.Report(ast.getFullLoc(stripped_expr->getLocStart()),
-                         EmptyLiteralStringDiag)
+            Diags.Report(ast.getFullLoc(stripped_expr->getLocStart()), EmptyLiteralStringDiag)
                 << stripped_expr->getSourceRange();
             return false;
         }
@@ -828,8 +812,7 @@ bool TraceParam::parseStringParam(const Expr *expr)
 
 void TraceCall::unknownTraceParam(const Expr *trace_param)
 {
-    Diags.Report(
-        ast.getFullLoc(trace_param->getLocStart()), UnknownTraceParamDiag)
+    Diags.Report(ast.getFullLoc(trace_param->getLocStart()), UnknownTraceParamDiag)
         << trace_param->getSourceRange();
 }
 
@@ -843,15 +826,12 @@ static std::string getCallExprFunctionName(const CallExpr *CE)
     return callee->getQualifiedNameAsString();
 }
 
-
-
 bool TraceParam::fromType(QualType type, bool fill_unknown_type)
 {
     QualType canonical_type = type.getCanonicalType();
     if (parseCStrTypeParam(canonical_type)) {
         return true;
-    } else
-    if (parseEnumTypeParam(canonical_type)) {
+    } else if (parseEnumTypeParam(canonical_type)) {
         return true;
     } else if (parseBasicTypeParam(canonical_type)) {
         return true;
@@ -917,9 +897,7 @@ bool TraceCall::constantSizeTrace(void)
     return true;
 }
 
-
-static bool shouldInstrumentFunctionDecl(const FunctionDecl *D,
-                                         bool whitelistExceptions)
+static bool shouldInstrumentFunctionDecl(const FunctionDecl *D, bool whitelistExceptions)
 {
     //@todo: implement filters
     if (D->isInlined()) {
@@ -927,8 +905,7 @@ static bool shouldInstrumentFunctionDecl(const FunctionDecl *D,
         if (!(D->isCXXClassMember() || D->isCXXInstanceMember())) {
             return false;
         }
-        if (D->isTrivial() || D->isHidden() || D->isRecord()
-            || D->hasTrivialBody()) {
+        if (D->isTrivial() || D->isHidden() || D->isRecord() || D->hasTrivialBody()) {
             return false;
         }
         // @todo: is this function defined in namespace std
@@ -968,11 +945,10 @@ public:
     LangOptions langOpts;
     bool whitelistExceptions;
 
-    DeclIterator(llvm::raw_ostream &xOut, DiagnosticsEngine &_Diags,
-                 ASTContext &xAst, Rewriter *rewriter, SourceManager *sm,
-                 const LangOptions &_langOpts)
-        : Out(xOut), Diags(_Diags), ast(xAst), Rewrite(rewriter), SM(sm),
-          langOpts(_langOpts), whitelistExceptions(false) {};
+    DeclIterator(llvm::raw_ostream &xOut, DiagnosticsEngine &_Diags, ASTContext &xAst, Rewriter *rewriter,
+                 SourceManager *sm, const LangOptions &_langOpts)
+        : Out(xOut), Diags(_Diags), ast(xAst), Rewrite(rewriter), SM(sm), langOpts(_langOpts),
+          whitelistExceptions(false) {};
     void VisitDeclContext(DeclContext *DC, bool Indent = true);
     void VisitTranslationUnitDecl(TranslationUnitDecl *D);
     void VisitTypedefDecl(TypedefDecl *D);
@@ -1009,12 +985,9 @@ public:
     Decl *D;
     bool whitelistExceptions;
 
-    StmtIterator(llvm::raw_ostream &xOut, DiagnosticsEngine &_Diags,
-                 ASTContext &xAst, Rewriter *rewriter, SourceManager *sm,
-                 const LangOptions &_langOpts, Decl *_D,
-                 bool _whitelistExceptions)
-        : Out(xOut), Diags(_Diags), ast(xAst), Rewrite(rewriter), SM(sm),
-          langOpts(_langOpts), D(_D),
+    StmtIterator(llvm::raw_ostream &xOut, DiagnosticsEngine &_Diags, ASTContext &xAst, Rewriter *rewriter,
+                 SourceManager *sm, const LangOptions &_langOpts, Decl *_D, bool _whitelistExceptions)
+        : Out(xOut), Diags(_Diags), ast(xAst), Rewrite(rewriter), SM(sm), langOpts(_langOpts), D(_D),
           whitelistExceptions(_whitelistExceptions) {};
 
 #define STMT(Node, Base) void Visit##Node(Node *S);
@@ -1026,8 +999,7 @@ public:
     void VisitName(DeclarationName Name);
     void VisitNestedNameSpecifier(NestedNameSpecifier *NNS);
     void VisitTemplateName(TemplateName Name);
-    void VisitTemplateArguments(const TemplateArgumentLoc *Args,
-                                unsigned NumArgs);
+    void VisitTemplateArguments(const TemplateArgumentLoc *Args, unsigned NumArgs);
     void VisitTemplateArgument(const TemplateArgument &Arg);
 
 private:
@@ -1036,9 +1008,7 @@ private:
 
 void DeclIterator::VisitDeclContext(DeclContext *DC, bool Indent)
 {
-    for (DeclContext::decl_iterator D = DC->decls_begin(),
-                                    DEnd = DC->decls_end();
-         D != DEnd; ++D) {
+    for (DeclContext::decl_iterator D = DC->decls_begin(), DEnd = DC->decls_end(); D != DEnd; ++D) {
         Visit(*D);
     }
 }
@@ -1092,8 +1062,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
     if (!(D->hasBody() && D->isThisDeclarationADefinition())) {
         return;
     }
-    StmtIterator stmtiterator(Out, Diags, ast, Rewrite, SM, langOpts, D,
-                              whitelistExceptions);
+    StmtIterator stmtiterator(Out, Diags, ast, Rewrite, SM, langOpts, D, whitelistExceptions);
 
     bool has_returns = false;
     Stmt *stmt = D->getBody();
@@ -1102,11 +1071,10 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
     TraceParam function_name_param(Out, Diags, ast, Rewrite);
     function_name_param.setConstStr(D->getQualifiedNameAsString());
     TraceCall trace_call(Out, Diags, ast, Rewrite);
-//    trace_call.addTraceParam(function_name_param);
+    //    trace_call.addTraceParam(function_name_param);
     enum trace_severity severity = TRACE_SEV_FUNC_TRACE;
 
-    if (NULL
-        != strstr(D->getQualifiedNameAsString().c_str(), "_trace_represent")) {
+    if (NULL != strstr(D->getQualifiedNameAsString().c_str(), "_trace_represent")) {
         goto exit;
     }
 
@@ -1129,23 +1097,18 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         trace_call.setSeverity(severity);
         trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
         trace_call.addTraceParam(function_name_param);
-        Rewrite->ReplaceText(
-            endLocation, 1,
-            TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
-                             SM->getPresumedLineNumber(function_start))
-            + std::string("}}"));
+        Rewrite->ReplaceText(endLocation, 1,
+                             TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
+                                              SM->getPresumedLineNumber(function_start)) + std::string("}}"));
     }
 
     // handle function parameters
-    for (FunctionDecl::param_const_iterator I = D->param_begin(),
-                                            E = D->param_end();
-         I != E; ++I) {
+    for (FunctionDecl::param_const_iterator I = D->param_begin(), E = D->param_end(); I != E; ++I) {
         trace_param.clear();
         if ((*I)->getNameAsString().length() == 0) {
             continue;
         }
-        bool was_parsed
-            = trace_param.fromType((*I)->getType().getCanonicalType(), true);        
+        bool was_parsed = trace_param.fromType((*I)->getType().getCanonicalType(), true);
         if (!was_parsed) {
             stmtiterator.Visit(D->getBody());
             return;
@@ -1156,11 +1119,10 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         trace_call.addTraceParam(trace_param);
     }
 
-    Rewrite->InsertText(
-        function_start,
-        TRACE_FUNC_ENTRY(function_name_param.const_str, trace_call.getExpansion(),
-                         SM->getPresumedLineNumber(function_start)),
-        true);
+    Rewrite->InsertText(function_start,
+                        TRACE_FUNC_ENTRY(function_name_param.const_str, trace_call.getExpansion(),
+                                         SM->getPresumedLineNumber(function_start)),
+                        true);
 exit:
     stmtiterator.Visit(D->getBody());
 }
@@ -1227,9 +1189,7 @@ void DeclIterator::VisitFunctionTemplateDecl(FunctionTemplateDecl *D)
 {
     return;
     return;
-    for (FunctionTemplateDecl::spec_iterator I = D->spec_begin(),
-                                             E = D->spec_end();
-         I != E; ++I) {
+    for (FunctionTemplateDecl::spec_iterator I = D->spec_begin(), E = D->spec_end(); I != E; ++I) {
         Visit(*I);
     }
 
@@ -1239,9 +1199,7 @@ void DeclIterator::VisitFunctionTemplateDecl(FunctionTemplateDecl *D)
 void DeclIterator::VisitClassTemplateDecl(ClassTemplateDecl *D)
 {
     return;
-    for (ClassTemplateDecl::spec_iterator I = D->spec_begin(),
-                                          E = D->spec_end();
-         I != E; ++I) {
+    for (ClassTemplateDecl::spec_iterator I = D->spec_begin(), E = D->spec_end(); I != E; ++I) {
         Visit(*I);
     }
 
@@ -1259,8 +1217,8 @@ void DeclIterator::VisitTemplateDecl(const TemplateDecl *D)
     // }
 }
 
-static SourceRange getDeclRange(SourceManager *SM, const LangOptions *langOpts,
-                                const clang::Decl *D, bool with_semicolon)
+static SourceRange getDeclRange(SourceManager *SM, const LangOptions *langOpts, const clang::Decl *D,
+                                bool with_semicolon)
 {
     clang::SourceLocation SLoc = SM->getExpansionLoc(D->getLocStart());
     clang::SourceLocation ELoc = SM->getExpansionLoc(D->getLocEnd());
@@ -1307,8 +1265,7 @@ void StmtIterator::VisitDeclStmt(DeclStmt *S)
 {
 
     VisitStmt(S);
-    for (DeclStmt::decl_iterator D = S->decl_begin(), DEnd = S->decl_end();
-         D != DEnd; ++D)
+    for (DeclStmt::decl_iterator D = S->decl_begin(), DEnd = S->decl_end(); D != DEnd; ++D)
         VisitDecl(*D);
 }
 
@@ -1366,8 +1323,7 @@ void StmtIterator::VisitObjCBridgedCastExpr(ObjCBridgedCastExpr *S)
     VisitStmt(S);
 }
 
-void StmtIterator::VisitObjCAutoreleasePoolStmt(clang::ObjCAutoreleasePoolStmt
-                                                *S)
+void StmtIterator::VisitObjCAutoreleasePoolStmt(clang::ObjCAutoreleasePoolStmt *S)
 {
 
     VisitStmt(S);
@@ -1464,15 +1420,13 @@ void StmtIterator::VisitObjCSubscriptRefExpr(clang::ObjCSubscriptRefExpr *S)
     VisitStmt(S);
 }
 
-void StmtIterator::VisitObjCIndirectCopyRestoreExpr(ObjCIndirectCopyRestoreExpr
-                                                    *S)
+void StmtIterator::VisitObjCIndirectCopyRestoreExpr(ObjCIndirectCopyRestoreExpr *S)
 {
 
     VisitStmt(S);
 }
 
-void
-StmtIterator::VisitSubstNonTypeTemplateParmExpr(SubstNonTypeTemplateParmExpr *S)
+void StmtIterator::VisitSubstNonTypeTemplateParmExpr(SubstNonTypeTemplateParmExpr *S)
 {
 
     VisitStmt(S);
@@ -1564,8 +1518,7 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
         return;
     }
 
-    if (NULL
-        != strstr(FD->getQualifiedNameAsString().c_str(), "_trace_represent")) {
+    if (NULL != strstr(FD->getQualifiedNameAsString().c_str(), "_trace_represent")) {
         return;
     }
 
@@ -1582,7 +1535,7 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
     }
 
     SourceLocation startLoc = S->getLocStart();
-    SourceLocation onePastSemiLoc = getReturnStmtEnd(ast, Rewrite, S);
+    SourceLocation onePastSemiLoc = getReturnStmtEnd(ast, Rewrite, S, langOpts);
 
     TraceParam trace_param(Out, Diags, ast, Rewrite);
     TraceParam function_name_param(Out, Diags, ast, Rewrite);
@@ -1597,20 +1550,21 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
         goto expand;
     }
 
-    if (trace_param.fromExpr(S->getRetValue(), false)
-        && !(S->getRetValue()->HasSideEffects(ast))) {
+    if (trace_param.fromExpr(S->getRetValue(), false) && !(S->getRetValue()->HasSideEffects(ast))) {
         trace_call.addTraceParam(trace_param);
         VisitStmt(S);
     }
 
 expand:
-    Rewrite->InsertText(onePastSemiLoc, "}", true);
+    std::string problem_str = "";
+    if (Rewrite->InsertText(onePastSemiLoc, "}", true)) {
+        std::cout << "error: couldn't insert }" << std::endl;
+    };
     Stmt *stmt = FD->getBody();
     SourceLocation function_start = getFunctionBodyStart(stmt);
     Rewrite->ReplaceText(
         startLoc, 6, TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
-                                      SM->getPresumedLineNumber(function_start))
-                     + " return ");
+                                      SM->getPresumedLineNumber(function_start)) + problem_str + " return ");
     return;
 }
 
@@ -1900,8 +1854,7 @@ void StmtIterator::VisitDesignatedInitExpr(DesignatedInitExpr *S)
 {
 
     VisitExpr(S);
-    for (DesignatedInitExpr::designators_iterator D = S->designators_begin(),
-                                                  DEnd = S->designators_end();
+    for (DesignatedInitExpr::designators_iterator D = S->designators_begin(), DEnd = S->designators_end();
          D != DEnd; ++D) {
         if (D->isFieldDesignator()) {
             VisitName(D->getFieldName());
@@ -2035,8 +1988,7 @@ void StmtIterator::VisitCXXBindTemporaryExpr(CXXBindTemporaryExpr *S)
 {
 
     VisitExpr(S);
-    VisitDecl(const_cast
-              <CXXDestructorDecl *>(S->getTemporary()->getDestructor()));
+    VisitDecl(const_cast<CXXDestructorDecl *>(S->getTemporary()->getDestructor()));
 }
 
 void StmtIterator::VisitCXXConstructExpr(CXXConstructExpr *S)
@@ -2136,16 +2088,14 @@ void StmtIterator::VisitExprWithCleanups(ExprWithCleanups *S)
     VisitExpr(S);
 }
 
-void StmtIterator::VisitCXXUnresolvedConstructExpr(CXXUnresolvedConstructExpr
-                                                   *S)
+void StmtIterator::VisitCXXUnresolvedConstructExpr(CXXUnresolvedConstructExpr *S)
 {
 
     VisitExpr(S);
     VisitType(S->getTypeAsWritten());
 }
 
-void StmtIterator::VisitCXXDependentScopeMemberExpr(CXXDependentScopeMemberExpr
-                                                    *S)
+void StmtIterator::VisitCXXDependentScopeMemberExpr(CXXDependentScopeMemberExpr *S)
 {
 
     if (!S->isImplicitAccess()) {
@@ -2188,8 +2138,7 @@ void StmtIterator::VisitSizeOfPackExpr(SizeOfPackExpr *S)
     VisitDecl(S->getPack());
 }
 
-void StmtIterator::VisitSubstNonTypeTemplateParmPackExpr(
-    SubstNonTypeTemplateParmPackExpr *S)
+void StmtIterator::VisitSubstNonTypeTemplateParmPackExpr(SubstNonTypeTemplateParmPackExpr *S)
 {
 
     VisitExpr(S);
@@ -2286,8 +2235,7 @@ void StmtIterator::VisitTemplateName(TemplateName Name)
 {
 }
 
-void StmtIterator::VisitTemplateArguments(const TemplateArgumentLoc *Args,
-                                          unsigned NumArgs)
+void StmtIterator::VisitTemplateArguments(const TemplateArgumentLoc *Args, unsigned NumArgs)
 {
 
     for (unsigned I = 0; I != NumArgs; ++I)
@@ -2338,11 +2286,10 @@ public:
     raw_ostream *OutFile;
     FileID MainFileID;
     SourceManager *SM;
-    std::string InFileName;    
+    std::string InFileName;
     CompilerInstance *compilerInstance;
 
-    PreCompilationLogsConsumer(StringRef inFile, raw_ostream *out,
-                               CompilerInstance &CI);
+    PreCompilationLogsConsumer(StringRef inFile, raw_ostream *out, CompilerInstance &CI);
 
     std::string replaceOnce(std::string result, const std::string &replaceWhat,
                             const std::string &replaceWithWhat)
@@ -2380,8 +2327,7 @@ public:
         MainFileID = SM->getMainFileID();
         DeclIterator decliterator(Out, Diags, C, &Rewrite, SM, C.getLangOpts());
         decliterator.Visit(C.getTranslationUnitDecl());
-        if (const RewriteBuffer *RewriteBuf
-            = Rewrite.getRewriteBufferFor(MainFileID)) {
+        if (const RewriteBuffer *RewriteBuf = Rewrite.getRewriteBufferFor(MainFileID)) {
             *OutFile << std::string(RewriteBuf->begin(), RewriteBuf->end());
         } else {
             StringRef buffer = SM->getBufferData(MainFileID).data();
@@ -2393,11 +2339,9 @@ private:
     Rewriter Rewrite;
 };
 
-PreCompilationLogsConsumer::PreCompilationLogsConsumer(StringRef inFile,
-                                                       raw_ostream *out,
+PreCompilationLogsConsumer::PreCompilationLogsConsumer(StringRef inFile, raw_ostream *out,
                                                        CompilerInstance &CI)
-    : Out(llvm::errs()), Diags(CI.getDiagnostics()), OutFile(out),
-      InFileName(inFile), compilerInstance(&CI)
+    : Out(llvm::errs()), Diags(CI.getDiagnostics()), OutFile(out), InFileName(inFile), compilerInstance(&CI)
 {
 }
 
@@ -2406,7 +2350,7 @@ class InstrumentCodeAction : public PluginASTAction
 private:
     raw_ostream *OS;
     StringRef InFile;
-    CompilerInstance *CI;    
+    CompilerInstance *CI;
 
 protected:
     ASTConsumer *CreateASTConsumer(CompilerInstance &CI, llvm::StringRef InFile)
@@ -2418,8 +2362,7 @@ protected:
         }
     }
 
-    bool ParseArgs(const CompilerInstance &CI,
-                   const std::vector<std::string> &args)
+    bool ParseArgs(const CompilerInstance &CI, const std::vector<std::string> &args)
     {
         if (args.size()) {
             // current filename
@@ -2437,5 +2380,4 @@ protected:
 };
 }
 
-static FrontendPluginRegistry::Add<InstrumentCodeAction>
-X("trace-instrument", "Instrument code for traces");
+static FrontendPluginRegistry::Add<InstrumentCodeAction> X("trace-instrument", "Instrument code for traces");

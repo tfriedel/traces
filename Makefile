@@ -1,6 +1,7 @@
 CFLAGS=-Iinclude/ -c -Wall -g -fPIC
 
 TRACE_LLVM_CONFIG_PATH?=/home/friedel/opt/clang+llvm-3.1-x86_64-linux-ubuntu-11.10/bin/llvm-config
+#TRACE_LLVM_CONFIG_PATH?=/usr/bin/llvm-config-3.4
 LLVM_CONFIG=$(TRACE_LLVM_CONFIG_PATH)
 H2XML = $(shell which h2xml h2xml.py | head -1)
 XML2PY = $(shell which xml2py xml2py.py | head -1)
