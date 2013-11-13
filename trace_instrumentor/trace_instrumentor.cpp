@@ -159,18 +159,6 @@ static std::string normalizeTypeName(std::string type_str)
     return replaceAll(replaced, ":", "_");
 }
 
-static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite, const clang::Stmt *S)
-{
-    SourceManager *SM = &ast.getSourceManager();
-    int Size = Rewrite->getRangeSize(S->getSourceRange());
-    if (Size == -1) {
-        return std::string("");
-    }
-
-    const char *startBuf = SM->getCharacterData(S->getLocStart());
-    return std::string(startBuf, Size);
-}
-
 static std::string getString(const SourceLocation &loc, const SourceManager *SM)
 {
     std::string S2;
@@ -178,6 +166,53 @@ static std::string getString(const SourceLocation &loc, const SourceManager *SM)
     loc.print(OS, *SM);
     return OS.str();
 }
+
+static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite, const clang::Stmt *S)
+{
+    SourceManager *SM = &ast.getSourceManager();
+    int Size = Rewrite->getRangeSize(S->getSourceRange());
+    clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());
+
+    if (Size == -1) {
+        clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());
+        clang::SourceLocation ELoc = SM->getExpansionLoc(S->getLocEnd());
+        //while (ELoc.)
+        //ELoc = ELoc.getLocWithOffset(1);
+        SourceLocation END = S->getLocEnd();
+        int offset = Lexer::MeasureTokenLength(END,
+                                                Rewrite->getSourceMgr(),
+                                                Rewrite->getLangOpts()) + 1;
+
+        SourceLocation END1 = END.getLocWithOffset(offset);
+        CharSourceRange charSourceRange = CharSourceRange::getCharRange(S->getLocStart(), END1);
+        //Rewriter::getRangeSize(
+        int size = Rewrite->getRangeSize(charSourceRange);
+        std::cout << "size = " << size << std::endl;
+        if (size == -1) {
+
+            std::cout << "SLoc + 0: " << getString (SLoc.getLocWithOffset(0), SM) << std::endl;
+            std::cout << "SLoc + 1: " << getString (SLoc.getLocWithOffset(1), SM) << std::endl;
+            std::cout << "RewrittenText = " << Rewrite->getRewrittenText(SourceRange(SLoc, ELoc)) << std::endl;
+            std::cout << "RewrittenText2 = " << Rewrite->getRewrittenText(SourceRange(S->getLocStart(), S->getLocEnd())) << std::endl;
+        }
+        if (size >= 0) {
+            std::cout << "SLoc: " << getString(SLoc, SM) << " ELoc: " << getString(ELoc, SM) << std::endl;
+            // Below code copied from clang::Lexer::MeasureTokenLength():
+            clang::SourceLocation Loc = SM->getExpansionLoc(ELoc);
+            std::cout << "Loc: " << getString(Loc, SM) << std::endl;
+            const char *startBuf = SM->getCharacterData(S->getLocStart());
+            std::string retString(startBuf, size);
+            std::cout << "retString: " << retString << std::endl;
+            return retString;
+        } else {
+            return std::string("");
+        }
+    }
+
+    const char *startBuf = SM->getCharacterData(S->getLocStart());
+    return std::string(startBuf, Size);
+}
+
 // Pair of start, end positions in the source.
 typedef std::pair<unsigned, unsigned> SrcRange;
 
@@ -188,14 +223,26 @@ SourceLocation getNextSemicolon(const clang::Stmt *S, const clang::SourceManager
     clang::SourceLocation ELoc = sm->getExpansionLoc(S->getLocEnd());
     // Below code copied from clang::Lexer::MeasureTokenLength():
     clang::SourceLocation Loc = sm->getExpansionLoc(ELoc);
-    std::pair<clang::FileID, unsigned> LocInfo = sm->getDecomposedLoc(Loc);
+    static std::pair<clang::FileID, unsigned> LocInfo = sm->getDecomposedLoc(Loc);
+    bool differentFile = false;
+    if (sm->getFileID(Loc) != LocInfo.first) {
+        differentFile = true;
+        LocInfo = sm->getDecomposedLoc(Loc);
+    }
     llvm::StringRef Buffer = sm->getBufferData(LocInfo.first);
     const char *StrData = Buffer.data() + LocInfo.second;
-    clang::Lexer TheLexer(Loc, options, Buffer.begin(), StrData, Buffer.end());
-    clang::Token TheTok;
-    TheLexer.LexFromRawLexer(TheTok);
+    static clang::Lexer *TheLexer = new Lexer(Loc, options, Buffer.begin(), StrData, Buffer.end());
+    if (differentFile) {
+        if (TheLexer) {
+            delete TheLexer;
+        }
+        std::cout << "creating new Lexer" << std::endl;
+        TheLexer = new Lexer(Loc, options, Buffer.begin(), StrData, Buffer.end());
+    }
+    //clang::Token TheTok;
+    //TheLexer.LexFromRawLexer(TheTok);
     SourceLocation semicolonLoc
-        = TheLexer.findLocationAfterToken(S->getLocEnd(), clang::tok::semi, *sm, options, false);
+        = TheLexer->findLocationAfterToken(S->getLocEnd(), clang::tok::semi, *sm, options, false);
     return semicolonLoc;
 }
 
@@ -319,15 +366,18 @@ bool TraceParam::parseBasicTypeParam(const Expr *expr)
 
     const Type *type = get_expr_type(stripped_expr);
     if (NULL == type) {
+        std::cout << "couldn't get type from basic expression." << std::endl;
         return false;
     }
 
     bool parsed = parseBasicTypeParam(expr->getType().getCanonicalType());
     if (!parsed) {
+        std::cout << "parseBasicTypeParam() not successful." << std::endl;
         return false;
     }
 
     expression = getLiteralExpr(ast, Rewrite, expr);
+    std::cout << "expression = " << expression << std::endl;
     return true;
 }
 
@@ -481,6 +531,7 @@ std::string TraceCall::getExpansion()
     std::vector<std::string> parameters;
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];
+        std::cout << param.asString() << std::endl;
         if ((param.flags & TRACE_PARAM_FLAG_CSTR)) {
             std::string paramStr = printAisB(param.expression, param.expression);
             std::stringstream ss;
@@ -846,7 +897,8 @@ bool TraceParam::fromType(QualType type, bool fill_unknown_type)
 }
 
 bool TraceParam::fromExpr(const Expr *trace_param, bool deref_pointer)
-{
+{                
+    std::cout << "--> fromExpr()" << std::endl;
     if (deref_pointer && parseStringParam(trace_param)) {
         return true;
     } else if (parseHexBufParam(trace_param)) {
@@ -858,8 +910,10 @@ bool TraceParam::fromExpr(const Expr *trace_param, bool deref_pointer)
     } else if (deref_pointer && parseClassTypeParam(trace_param)) {
         return true;
     } else if (parseBasicTypeParam(trace_param)) {
+        std::cout << "TraceParam::fromExpr() = true (parseBasicTypeParam)" << std::endl;
         return true;
     }
+    std::cout << "TraceParam::fromExpr() = false" << std::endl;
     return false;
 }
 
@@ -1046,7 +1100,7 @@ void DeclIterator::VisitEnumConstantDecl(EnumConstantDecl *D)
 
 void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
 {
-
+    std::cout << "--> VisitFunctionDecl()" << std::endl;
     if (NULL != strstr(D->getQualifiedNameAsString().c_str(), "std::")) {
         return;
     }
@@ -1097,6 +1151,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         trace_call.setSeverity(severity);
         trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
         trace_call.addTraceParam(function_name_param);
+        // replace }
         Rewrite->ReplaceText(endLocation, 1,
                              TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
                                               SM->getPresumedLineNumber(function_start)) + std::string("}}"));
@@ -1511,7 +1566,7 @@ void StmtIterator::VisitBreakStmt(BreakStmt *S)
 
 void StmtIterator::VisitReturnStmt(ReturnStmt *S)
 {
-
+    std::cout << "--> VisitReturnStmt()" << std::endl;
     const FunctionDecl *FD = cast<FunctionDecl>(D);
 
     if (NULL != strstr(FD->getQualifiedNameAsString().c_str(), "std::")) {
@@ -1562,6 +1617,7 @@ expand:
     };
     Stmt *stmt = FD->getBody();
     SourceLocation function_start = getFunctionBodyStart(stmt);
+    // replace return statement
     Rewrite->ReplaceText(
         startLoc, 6, TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
                                       SM->getPresumedLineNumber(function_start)) + problem_str + " return ");
