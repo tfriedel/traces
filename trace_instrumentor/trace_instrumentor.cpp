@@ -167,55 +167,98 @@ static std::string getString(const SourceLocation &loc, const SourceManager *SM)
     return OS.str();
 }
 
-static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite, const clang::Stmt *S)
-{
-    SourceManager *SM = &ast.getSourceManager();
-    clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());
-    int size = 0;
-    SourceLocation loc = SLoc;
-    const char *startBuf = SM->getCharacterData(SLoc);
-    const char *c = SM->getCharacterData(loc);
-    // keep looking for ';' by advancing one character at a time until we find it
-    while (*c != ';') {
-        loc = loc.getLocWithOffset(1);
-        c = SM->getCharacterData(loc);
-        size++;
-    }
-    std::string retString(startBuf, size);
-    return retString;
-}
-
 // Pair of start, end positions in the source.
 typedef std::pair<unsigned, unsigned> SrcRange;
 
 // Get the the location of the next semicolon following a statement
-SourceLocation getNextSemicolon(const clang::Stmt *S, const clang::SourceManager *sm,
-                                const clang::LangOptions &options)
+SourceLocation getNextSemicolon(const clang::Stmt *S, const clang::SourceManager *SM)
 {
-    clang::SourceLocation ELoc = sm->getExpansionLoc(S->getLocEnd());
-    // Below code copied from clang::Lexer::MeasureTokenLength():
-    clang::SourceLocation Loc = sm->getExpansionLoc(ELoc);
-    static std::pair<clang::FileID, unsigned> LocInfo = sm->getDecomposedLoc(Loc);
-    bool differentFile = false;
-    if (sm->getFileID(Loc) != LocInfo.first) {
-        differentFile = true;
-        LocInfo = sm->getDecomposedLoc(Loc);
-    }
-    llvm::StringRef Buffer = sm->getBufferData(LocInfo.first);
-    const char *StrData = Buffer.data() + LocInfo.second;
-    static clang::Lexer *TheLexer = new Lexer(Loc, options, Buffer.begin(), StrData, Buffer.end());
-    if (differentFile) {
-        if (TheLexer) {
-            delete TheLexer;
+    clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());    
+    SourceLocation loc = SLoc;
+
+    // keep looking for ';' by advancing one character at a time until we find it
+
+    enum { /*Enum construct declares states */
+           DOUBLEQUOTE,
+           SINGLEQUOTE,
+           BACKSLASH,
+           BACKSLASH_SINGLEQUOTE,
+           BACKSLASH_DOUBLEQUOTE,
+           LITERAL,
+           SEMICOLON } state;
+
+    state = LITERAL;
+    char c;
+    while (state != SEMICOLON) {
+        c = *SM->getCharacterData(loc);
+        switch (state) {
+        case LITERAL:
+            switch (c) {
+            case ';':
+                state = SEMICOLON;
+                break;
+            case '"':
+                state = DOUBLEQUOTE;
+                break;
+            case '\'':
+                state = SINGLEQUOTE;
+                break;
+            case '\\':
+                state = BACKSLASH;
+                break;
+            default:
+                break;
+            }
+            break;
+        case SINGLEQUOTE:
+            switch (c) {
+            case '\'':
+                state = LITERAL;
+                break;
+            case '\\':
+                state = BACKSLASH_SINGLEQUOTE;
+                break;
+            default:
+                break;
+            }
+            break;
+        case DOUBLEQUOTE:
+            switch (c) {
+            case '"':
+                state = LITERAL;
+                break;
+            case '\\':
+                state = BACKSLASH_DOUBLEQUOTE;
+                break;
+            default:
+                break;
+            }
+            break;
+        case BACKSLASH:
+            state = LITERAL;
+            break;
+        case BACKSLASH_SINGLEQUOTE:
+            state = SINGLEQUOTE;
+            break;
+        case BACKSLASH_DOUBLEQUOTE:
+            state = DOUBLEQUOTE;
+            break;
         }
-        std::cout << "creating new Lexer" << std::endl;
-        TheLexer = new Lexer(Loc, options, Buffer.begin(), StrData, Buffer.end());
+        if (state != SEMICOLON) {
+            loc = loc.getLocWithOffset(1);
+        }
     }
-    //clang::Token TheTok;
-    //TheLexer.LexFromRawLexer(TheTok);
-    SourceLocation semicolonLoc
-        = TheLexer->findLocationAfterToken(S->getLocEnd(), clang::tok::semi, *sm, options, false);
-    return semicolonLoc;
+    return loc;
+}
+
+static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite, const clang::Stmt *S)
+{
+    SourceManager *SM = &ast.getSourceManager();
+    clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());
+    const char *startBuf = SM->getCharacterData(SLoc);
+    const char *endBuf = SM->getCharacterData(getNextSemicolon(S, SM));
+    std::string retString(startBuf, endBuf - startBuf);
+    return retString;
 }
 
 void hasReturnStmts(Stmt *S, bool &hasReturns)
@@ -229,11 +272,10 @@ void hasReturnStmts(Stmt *S, bool &hasReturns)
     return;
 }
 
-static SourceLocation getReturnStmtEnd(ASTContext &ast, Rewriter *Rewrite, ReturnStmt *S,
-                                       LangOptions &langOpts)
+static SourceLocation getReturnStmtEnd(ASTContext &ast, Rewriter *Rewrite, ReturnStmt *S)
 {
     SourceManager *SM = &ast.getSourceManager();
-    SourceLocation semiLoc = getNextSemicolon(S, SM, langOpts);
+    SourceLocation semiLoc = getNextSemicolon(S, SM).getLocWithOffset(1);
     return semiLoc;
 }
 
@@ -869,7 +911,7 @@ bool TraceParam::fromType(QualType type, bool fill_unknown_type)
 }
 
 bool TraceParam::fromExpr(const Expr *trace_param, bool deref_pointer)
-{                
+{
     std::cout << "--> fromExpr()" << std::endl;
     if (deref_pointer && parseStringParam(trace_param)) {
         return true;
@@ -1562,7 +1604,7 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
     }
 
     SourceLocation startLoc = S->getLocStart();
-    SourceLocation onePastSemiLoc = getReturnStmtEnd(ast, Rewrite, S, langOpts);
+    SourceLocation onePastSemiLoc = getReturnStmtEnd(ast, Rewrite, S);
 
     TraceParam trace_param(Out, Diags, ast, Rewrite);
     TraceParam function_name_param(Out, Diags, ast, Rewrite);
