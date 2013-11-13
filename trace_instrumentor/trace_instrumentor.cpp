@@ -170,47 +170,19 @@ static std::string getString(const SourceLocation &loc, const SourceManager *SM)
 static std::string getLiteralExpr(ASTContext &ast, Rewriter *Rewrite, const clang::Stmt *S)
 {
     SourceManager *SM = &ast.getSourceManager();
-    int Size = Rewrite->getRangeSize(S->getSourceRange());
     clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());
-
-    if (Size == -1) {
-        clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());
-        clang::SourceLocation ELoc = SM->getExpansionLoc(S->getLocEnd());
-        //while (ELoc.)
-        //ELoc = ELoc.getLocWithOffset(1);
-        SourceLocation END = S->getLocEnd();
-        int offset = Lexer::MeasureTokenLength(END,
-                                                Rewrite->getSourceMgr(),
-                                                Rewrite->getLangOpts()) + 1;
-
-        SourceLocation END1 = END.getLocWithOffset(offset);
-        CharSourceRange charSourceRange = CharSourceRange::getCharRange(S->getLocStart(), END1);
-        //Rewriter::getRangeSize(
-        int size = Rewrite->getRangeSize(charSourceRange);
-        std::cout << "size = " << size << std::endl;
-        if (size == -1) {
-
-            std::cout << "SLoc + 0: " << getString (SLoc.getLocWithOffset(0), SM) << std::endl;
-            std::cout << "SLoc + 1: " << getString (SLoc.getLocWithOffset(1), SM) << std::endl;
-            std::cout << "RewrittenText = " << Rewrite->getRewrittenText(SourceRange(SLoc, ELoc)) << std::endl;
-            std::cout << "RewrittenText2 = " << Rewrite->getRewrittenText(SourceRange(S->getLocStart(), S->getLocEnd())) << std::endl;
-        }
-        if (size >= 0) {
-            std::cout << "SLoc: " << getString(SLoc, SM) << " ELoc: " << getString(ELoc, SM) << std::endl;
-            // Below code copied from clang::Lexer::MeasureTokenLength():
-            clang::SourceLocation Loc = SM->getExpansionLoc(ELoc);
-            std::cout << "Loc: " << getString(Loc, SM) << std::endl;
-            const char *startBuf = SM->getCharacterData(S->getLocStart());
-            std::string retString(startBuf, size);
-            std::cout << "retString: " << retString << std::endl;
-            return retString;
-        } else {
-            return std::string("");
-        }
+    int size = 0;
+    SourceLocation loc = SLoc;
+    const char *startBuf = SM->getCharacterData(SLoc);
+    const char *c = SM->getCharacterData(loc);
+    // keep looking for ';' by advancing one character at a time until we find it
+    while (*c != ';') {
+        loc = loc.getLocWithOffset(1);
+        c = SM->getCharacterData(loc);
+        size++;
     }
-
-    const char *startBuf = SM->getCharacterData(S->getLocStart());
-    return std::string(startBuf, Size);
+    std::string retString(startBuf, size);
+    return retString;
 }
 
 // Pair of start, end positions in the source.
