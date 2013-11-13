@@ -66,10 +66,10 @@ static inline unsigned short trace_get_nesting_level(void)
 #endif
 
 namespace tracer {
-    __attribute__((no_instrument_function))
-    static std::string float_to_hex( float f );
+    // __attribute__((no_instrument_function))
+    // static std::string float_to_hex( float f );
 
-    static std::string float_to_hex( float f )    
+    static inline std::string float_to_hex( float f )    
     {
         char buff[100];
         sprintf(buff, "%a", f);
@@ -77,9 +77,9 @@ namespace tracer {
         return buffAsStdStr;
     }
 
-    __attribute__((no_instrument_function))
-    static std::string float_to_hex( double d );
-    static std::string float_to_hex( double d )
+    // __attribute__((no_instrument_function))
+    // static std::string float_to_hex( double d );
+    static inline std::string float_to_hex( double d )
     {
         char buff[100];
         sprintf(buff, "%a", d);
@@ -87,14 +87,14 @@ namespace tracer {
         return buffAsStdStr;
     }
 
-    __attribute__((no_instrument_function))
-    static std::string float_to_hex( int d );
-    static std::string float_to_hex( int d )
+    // __attribute__((no_instrument_function))
+    // static std::string float_to_hex( int d );
+    static inline std::string float_to_hex( int d )
     {        
         return float_to_hex(static_cast<float>(d));
     }
 
-    static std::string getCurrentThreadName() {
+    static inline std::string getCurrentThreadName() {
         //boost::this_thread::get_id()
         return NULL;
     }
