@@ -15,12 +15,11 @@ static void trace_increment_nesting_level(void);
 static void trace_decrement_nesting_level(void);
 static unsigned short trace_get_nesting_level(void);
 
-#ifndef __ADSPBLACKFIN__
-__attribute__((no_instrument_function))
-#endif
+
 void trace_log_func_entry(char *cpp_filename, char *funcName, char *logText, unsigned int lineNo,
                           bool *entry_was_logged, int *traceCounter, int defaultMaxLogCallsPerFunction, ...);
-
+void trace_log_func_exit(char *cpp_filename, char *funcName, char *logText, unsigned int lineNo,
+                          bool *entry_was_logged, int *traceCounter, int defaultMaxLogCallsPerFunction, ...);
 }
 
 

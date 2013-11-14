@@ -58,22 +58,21 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 //        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")               \
 //        + "}trace_increment_nesting_level();}"
 
-#define TRACE_FUNC_ENTRY(funcName, lineNo, logText, parameters)                                                     \
+#define TRACE_FUNC_ENTRY(funcName, lineNo, logText, ...)                                                     \
     std::string("static int traceCounter_line_") + numberToStr(lineNo)                                       \
-        + " = 0;\n bool entry_was_logged=false;\n" + "tracer::trace_log_func_entry(\"" + cpp_filename + "\", \""     \
-        + funcName + "\" ,\"" + logText + "\", " + numberToStr(lineNo) + ", &entry_was_logged, "               \
-    + "&traceCounter_line_" + numberToStr(lineNo) + ", defaultMaxLogCallsPerFunction, "+parameters+")\n;"
+        + " = 0;\n bool entry_was_logged=false;\n" + "tracer::trace_log_func_entry(\"" + cpp_filename        \
+        + "\", \"" + funcName + "\" ,\"" + logText + "\", " + numberToStr(lineNo) + ", &entry_was_logged, "  \
+        + "&traceCounter_line_" + numberToStr(lineNo) + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__    \
+        + ");\n"
 //        +"if (traceCounter_line_" + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"        \
 //        + TRACE_LOG + std::string("<< \"--> ") + funcName + std::string("(\" << ") + logText               \
 //        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")               \
 //        + "}trace_increment_nesting_level();}"
 
-#define TRACE_FUNC_LEAVE(funcName, lineNo, logText, ...)                                                     \
-    std::string(";")
-//    std::string("if (") + TRACING_ENABLED + ")" + "{\n" + "trace_decrement_nesting_level(); "              \
-//                                                          "if (entry_was_logged)" + " {{\n" + TRACE_LOG    \
-//        + std::string("<< \"<-- ") + funcName + std::string("(\"") + logText + std::string("<< \")\"")     \
-//        + TRACE_ENDL + "}}"
+#define TRACE_FUNC_EXIT(funcName, lineNo, logText, ...)                                                      \
+    "tracer::trace_log_func_exit(\"" + cpp_filename + "\", \"" + funcName + "\" ,\"" + logText + "\", "      \
+        + numberToStr(lineNo) + ", &entry_was_logged, " + "&traceCounter_line_" + numberToStr(lineNo)        \
+        + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");\n"
 
 using namespace clang;
 
@@ -164,7 +163,8 @@ static std::string printAisB(const std::string &a, const std::string &b)
     return serialized.str();
 }
 
-static std::string printfAisB(const std::string &param_name, const std::string &expr_param, const std::string &format_str)
+static std::string printfAisB(const std::string &param_name, const std::string &expr_param,
+                              const std::string &format_str)
 {
     std::stringstream serialized;
     assert(format_str.length() > 0);
@@ -559,7 +559,7 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std
 }
 
 bool TraceParam::calcSimpleValueRepr()
-{    
+{
     std::stringstream expr_param_stream;
     if (!is_reference && !is_pointer) {
         if (type->isFloatingType()) {
@@ -633,8 +633,9 @@ bool TraceParam::calcSimpleValueRepr()
         }
         expr_param = expr_param_stream.str();
     }
-    std::cout << "calcSimpleValueRepr: " << "expr_param: " << expr_param <<
-                 " format_str: " << format_str << " expression: " <<expression << std::endl;
+    std::cout << "calcSimpleValueRepr: "
+              << "expr_param: " << expr_param << " format_str: " << format_str
+              << " expression: " << expression << std::endl;
     return true;
 }
 
@@ -648,7 +649,11 @@ std::string TraceCall::getExpansion()
         std::string paramStr;
         if ((param.flags & TRACE_PARAM_FLAG_CSTR)) {
             param.expr_param = param.expression;
-            param.format_str = "%s";
+            if (param.expression != "") {
+                param.format_str = "%s";
+            } else {
+                param.format_str = "";
+            }
             paramStr = printfAisB(param.expression, param.expr_param, param.format_str);
 
         } else if (param.isSimple() || param.isVarString()) {
@@ -700,7 +705,7 @@ std::string TraceCall::getParameterListStr()
     }
     // clear
     start_record.str("");
-    int i=0;
+    int i = 0;
     bool empty = true;
     for (std::vector<std::string>::iterator it = parameters.begin(); it != parameters.end(); ++it, ++i) {
         start_record << *it;
@@ -712,7 +717,7 @@ std::string TraceCall::getParameterListStr()
     if (empty) {
         start_record << "0";
     }
-    std::cout << "traceCall:getParameterListStr() = " << start_record.str() << std::endl;
+    std::cout << "traceCall:getParameterListStr() = '" << start_record.str() << "'" << std::endl;
     return start_record.str();
 }
 
@@ -1245,6 +1250,9 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         return;
     }
 
+    if (NULL != strstr(D->getQualifiedNameAsString().c_str(), "tracer::")) {
+        return;
+    }
     if (isa<CXXMethodDecl>(D)) {
         CXXMethodDecl *method_decl = dyn_cast<CXXMethodDecl>(D);
         CXXRecordDecl *class_decl = method_decl->getParent();
@@ -1276,7 +1284,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
     trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_ENTRY");
     if (!shouldInstrumentFunctionDecl(D, whitelistExceptions)) {
         goto exit;
-    }    
+    }
     hasReturnStmts(stmt, has_returns);
     if (!has_returns || D->getResultType()->isVoidType()) {
         SourceLocation endLocation = stmt->getLocEnd();
@@ -1293,11 +1301,9 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         // replace }
         expansion = trace_call.getExpansion();
         parameterlist = trace_call.getParameterListStr();
-        Rewrite->ReplaceText(
-            endLocation, 1,
-            TRACE_FUNC_LEAVE(function_name_param.const_str, SM->getPresumedLineNumber(function_start),
-                             expansion, parameterlist)
-            + std::string("}"));
+        Rewrite->ReplaceText(endLocation, 1, TRACE_FUNC_EXIT(function_name_param.const_str,
+                                                             SM->getPresumedLineNumber(function_start),
+                                                             expansion, parameterlist) + std::string("}"));
     }
 
     // handle function parameters
@@ -1766,9 +1772,9 @@ expand:
     std::string expansion = trace_call.getExpansion();
     std::string parameterlist = trace_call.getParameterListStr();
     Rewrite->ReplaceText(
-                startLoc, 6, std::string("{")+TRACE_FUNC_LEAVE(function_name_param.const_str,
-                                      SM->getPresumedLineNumber(function_start), expansion,
-                                      parameterList) + problem_str + " return ");
+        startLoc, 6, std::string("{") + TRACE_FUNC_EXIT(function_name_param.const_str,
+                                                        SM->getPresumedLineNumber(function_start), expansion,
+                                                        parameterlist) + problem_str + " return ");
     return;
 }
 
