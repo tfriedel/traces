@@ -50,19 +50,30 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #define TRACING_ENABLED std::string("true")
 #define TRACE_ENDL std::string(" << std::endl; ")
 
-#define TRACE_FUNC_ENTRY(funcName, logText, lineNo)                                                          \
-    std::string("static int traceCounter_line_") + numberToStr(lineNo)                                       \
-        + " = 0; bool entry_was_logged=false;\n" + std::string("if (") + TRACING_ENABLED + ")" + "{\n"       \
-        + +"if (traceCounter_line_" + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"        \
-        + TRACE_LOG + std::string("<< \"--> ") + funcName + std::string("(\" << ") + logText                 \
-        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")                 \
-        + "}trace_increment_nesting_level();}"
+//#define TRACE_FUNC_ENTRY(funcName, lineNo, logText)                                                        \
+//    std::string("static int traceCounter_line_") + numberToStr(lineNo)                                     \
+//        + " = 0; bool entry_was_logged=false;\n" + std::string("if (") + TRACING_ENABLED + ")" + "{\n"     \
+//        + +"if (traceCounter_line_" + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"      \
+//        + TRACE_LOG + std::string("<< \"--> ") + funcName + std::string("(\" << ") + logText               \
+//        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")               \
+//        + "}trace_increment_nesting_level();}"
 
-#define TRACE_FUNC_LEAVE(funcName, logText, lineNo)                                                          \
-    std::string("if (") + TRACING_ENABLED + ")" + "{\n" + "trace_decrement_nesting_level(); "                \
-                                                          "if (entry_was_logged)" + " {{\n" + TRACE_LOG      \
-        + std::string("<< \"<-- ") + funcName + std::string("(\"") + logText + std::string("<< \")\"")       \
-        + TRACE_ENDL + "}}"
+#define TRACE_FUNC_ENTRY(funcName, lineNo, logText, parameters)                                                     \
+    std::string("static int traceCounter_line_") + numberToStr(lineNo)                                       \
+        + " = 0;\n bool entry_was_logged=false;\n" + "tracer::trace_log_func_entry(\"" + cpp_filename + "\", \""     \
+        + funcName + "\" ,\"" + logText + "\", " + numberToStr(lineNo) + ", &entry_was_logged, "               \
+    + "&traceCounter_line_" + numberToStr(lineNo) + ", defaultMaxLogCallsPerFunction, "+parameters+")\n;"
+//        +"if (traceCounter_line_" + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"        \
+//        + TRACE_LOG + std::string("<< \"--> ") + funcName + std::string("(\" << ") + logText               \
+//        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")               \
+//        + "}trace_increment_nesting_level();}"
+
+#define TRACE_FUNC_LEAVE(funcName, lineNo, logText, ...)                                                     \
+    std::string(";")
+//    std::string("if (") + TRACING_ENABLED + ")" + "{\n" + "trace_decrement_nesting_level(); "              \
+//                                                          "if (entry_was_logged)" + " {{\n" + TRACE_LOG    \
+//        + std::string("<< \"<-- ") + funcName + std::string("(\"") + logText + std::string("<< \")\"")     \
+//        + TRACE_ENDL + "}}"
 
 using namespace clang;
 
@@ -153,6 +164,14 @@ static std::string printAisB(const std::string &a, const std::string &b)
     return serialized.str();
 }
 
+static std::string printfAisB(const std::string &param_name, const std::string &expr_param, const std::string &format_str)
+{
+    std::stringstream serialized;
+    assert(format_str.length() > 0);
+    serialized << param_name << ": " << format_str;
+    return serialized.str();
+}
+
 static std::string normalizeTypeName(std::string type_str)
 {
     std::string replaced = replaceAll(type_str, " ", "_");
@@ -173,7 +192,7 @@ typedef std::pair<unsigned, unsigned> SrcRange;
 // Get the the location of the next semicolon following a statement
 SourceLocation getNextSemicolon(const clang::Stmt *S, const clang::SourceManager *SM)
 {
-    clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());    
+    clang::SourceLocation SLoc = SM->getExpansionLoc(S->getLocStart());
     SourceLocation loc = SLoc;
 
     // keep looking for ';' by advancing one character at a time until we find it
@@ -539,6 +558,86 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std
     return serialized.str();
 }
 
+bool TraceParam::calcSimpleValueRepr()
+{    
+    std::stringstream expr_param_stream;
+    if (!is_reference && !is_pointer) {
+        if (type->isFloatingType()) {
+            format_str = "%a";
+        } else if (type->isCharType()) {
+            if (type->isSignedIntegerType()) {
+                format_str = "%d";
+            } else {
+                format_str = "%u";
+            }
+        } else {
+            if (type->isSignedIntegerType()) {
+                format_str = "%d";
+            } else if (type->isUnsignedIntegerType()) {
+                format_str = "%u";
+            } else {
+                format_str = "%s";
+                expr_param = "\"unhandled basic type\"";
+            }
+        }
+        if (expr_param == "") {
+            expr_param = expression;
+        }
+
+    } else if (is_reference || is_pointer) {
+        if (type) {
+            bool unhandledType = false;
+            bool floatingPointType = false;
+            bool integerType = false;
+            if (!(type->isReferenceType() || type->isPointerType())) {
+                format_str = "%s";
+                expr_param_stream << "\"[!isPointerType()]\"";
+                unhandledType = true;
+            } else {
+                const Type *pointeeType = type->getPointeeType().split().Ty;
+                if (!(pointeeType->isBuiltinType())) {
+                    format_str = "%s";
+                    expr_param_stream << "\"[!(pointeeType->isBuiltinType())]\"";
+                    unhandledType = true;
+                } else {
+                    const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
+                    // if (BT->getKind() == BuiltinType::Double) {
+                    if (BT->isFloatingPoint()) {
+                        int size = ast.getTypeSize(type) / 8;
+                        std::string type_name = QualType(pointeeType, 0).getAsString();
+                        floatingPointType = true;
+                        format_str = "%a";
+                    } else if (pointeeType->isSignedIntegerType()) {
+                        integerType = true;
+                        format_str = "%d";
+                    } else if (pointeeType->isUnsignedIntegerType()) {
+                        integerType = true;
+                        format_str = "%u";
+                    } else {
+                        unhandledType = true;
+                    }
+                }
+            }
+            if (unhandledType) {
+                expr_param_stream << "\"[unhandledType :" + type_name + "]\"";
+                format_str = "%s";
+            } else if (integerType || floatingPointType) {
+                expr_param_stream << "(";
+                std::stringstream new_expression;
+                if (is_pointer) {
+                    new_expression << "*";
+                }
+                new_expression << expression;
+                expr_param_stream << new_expression.str() << ")";
+            }
+        }
+        expr_param = expr_param_stream.str();
+    }
+    std::cout << "calcSimpleValueRepr: " << "expr_param: " << expr_param <<
+                 " format_str: " << format_str << " expression: " <<expression << std::endl;
+    return true;
+}
+
 std::string TraceCall::getExpansion()
 {
     std::stringstream start_record;
@@ -546,32 +645,28 @@ std::string TraceCall::getExpansion()
     for (unsigned int i = 0; i < args.size(); i++) {
         TraceParam &param = args[i];
         std::cout << param.asString() << std::endl;
+        std::string paramStr;
         if ((param.flags & TRACE_PARAM_FLAG_CSTR)) {
-            std::string paramStr = printAisB(param.expression, param.expression);
-            std::stringstream ss;
-            if (printFlags) {
-                ss << "\"" << escapeString(param.asString()) << "\"";
-            }
-            paramStr = ss.str() + paramStr;
-            parameters.push_back(paramStr);
-            continue;
+            param.expr_param = param.expression;
+            param.format_str = "%s";
+            paramStr = printfAisB(param.expression, param.expr_param, param.format_str);
+
         } else if (param.isSimple() || param.isVarString()) {
-            std::string paramStr
-                = constlength_writeSimpleValue(param.expression, param.type_name, param.is_pointer,
-                                               param.is_reference, param.size, param.type);
-            std::stringstream ss;
-            if (printFlags) {
-                ss << "\"" << escapeString(param.asString()) << "\"";
-            }
-            paramStr = ss.str() + paramStr;
-            parameters.push_back(paramStr);
-            continue;
+            param.calcSimpleValueRepr();
+            paramStr = printfAisB(param.param_name, param.expr_param, param.format_str);
+
         } else if (param.isBuffer()) {
+            assert(false);
+            /*
             start_record.str("");
             start_record << " << \"" << param.expression << ": \""
                          << "[buffer]";
             parameters.push_back(start_record.str());
+            */
             // @todo implement buffer output correctly
+        }
+        if (param.format_str != "") {
+            parameters.push_back(paramStr);
         }
     }
     // clear
@@ -583,12 +678,41 @@ std::string TraceCall::getExpansion()
         start_record << *it;
         empty = false;
         if (i < parameters.size() - 1) {
-            start_record << "<< \", \" << ";
+            start_record << ", ";
         }
     }
     if (empty) {
         start_record << "\"\"";
     }
+    std::cout << "traceCall:getExpansion() = " << start_record.str() << std::endl;
+    return start_record.str();
+}
+
+std::string TraceCall::getParameterListStr()
+{
+    std::stringstream start_record;
+    std::vector<std::string> parameters;
+    for (unsigned int i = 0; i < args.size(); i++) {
+        TraceParam &param = args[i];
+        if (param.format_str != "") {
+            parameters.push_back(param.expr_param);
+        }
+    }
+    // clear
+    start_record.str("");
+    int i=0;
+    bool empty = true;
+    for (std::vector<std::string>::iterator it = parameters.begin(); it != parameters.end(); ++it, ++i) {
+        start_record << *it;
+        empty = false;
+        if (i < parameters.size() - 1) {
+            start_record << ", ";
+        }
+    }
+    if (empty) {
+        start_record << "0";
+    }
+    std::cout << "traceCall:getParameterListStr() = " << start_record.str() << std::endl;
     return start_record.str();
 }
 
@@ -1114,6 +1238,8 @@ void DeclIterator::VisitEnumConstantDecl(EnumConstantDecl *D)
 
 void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
 {
+    std::string expansion;
+    std::string parameterlist;
     std::cout << "--> VisitFunctionDecl()" << std::endl;
     if (NULL != strstr(D->getQualifiedNameAsString().c_str(), "std::")) {
         return;
@@ -1150,8 +1276,7 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
     trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_ENTRY");
     if (!shouldInstrumentFunctionDecl(D, whitelistExceptions)) {
         goto exit;
-    }
-
+    }    
     hasReturnStmts(stmt, has_returns);
     if (!has_returns || D->getResultType()->isVoidType()) {
         SourceLocation endLocation = stmt->getLocEnd();
@@ -1166,9 +1291,13 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         trace_call.setKind("TRACE_LOG_DESCRIPTOR_KIND_FUNC_LEAVE");
         trace_call.addTraceParam(function_name_param);
         // replace }
-        Rewrite->ReplaceText(endLocation, 1,
-                             TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
-                                              SM->getPresumedLineNumber(function_start)) + std::string("}}"));
+        expansion = trace_call.getExpansion();
+        parameterlist = trace_call.getParameterListStr();
+        Rewrite->ReplaceText(
+            endLocation, 1,
+            TRACE_FUNC_LEAVE(function_name_param.const_str, SM->getPresumedLineNumber(function_start),
+                             expansion, parameterlist)
+            + std::string("}"));
     }
 
     // handle function parameters
@@ -1187,11 +1316,13 @@ void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
         trace_param.expression = (*I)->getNameAsString();
         trace_call.addTraceParam(trace_param);
     }
-
-    Rewrite->InsertText(function_start,
-                        TRACE_FUNC_ENTRY(function_name_param.const_str, trace_call.getExpansion(),
-                                         SM->getPresumedLineNumber(function_start)),
-                        true);
+    expansion = trace_call.getExpansion();
+    parameterlist = trace_call.getParameterListStr();
+    Rewrite->InsertText(
+        function_start,
+        TRACE_FUNC_ENTRY(function_name_param.const_str, SM->getPresumedLineNumber(function_start),
+                         trace_call.getExpansion(), trace_call.getParameterListStr()),
+        true);
 exit:
     stmtiterator.Visit(D->getBody());
 }
@@ -1632,9 +1763,12 @@ expand:
     Stmt *stmt = FD->getBody();
     SourceLocation function_start = getFunctionBodyStart(stmt);
     // replace return statement
+    std::string expansion = trace_call.getExpansion();
+    std::string parameterlist = trace_call.getParameterListStr();
     Rewrite->ReplaceText(
-        startLoc, 6, TRACE_FUNC_LEAVE(function_name_param.const_str, trace_call.getExpansion(),
-                                      SM->getPresumedLineNumber(function_start)) + problem_str + " return ");
+                startLoc, 6, std::string("{")+TRACE_FUNC_LEAVE(function_name_param.const_str,
+                                      SM->getPresumedLineNumber(function_start), expansion,
+                                      parameterList) + problem_str + " return ");
     return;
 }
 

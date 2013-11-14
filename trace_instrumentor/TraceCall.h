@@ -57,32 +57,31 @@ public:
     unsigned NonInlineTraceRepresentDiag;
     unsigned MultipleReprCallsDiag;
     unsigned EmptyLiteralStringDiag;
-    TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags,
-               ASTContext &_ast, Rewriter *rewriter)
-        : Out(out), Diags(_Diags), ast(_ast), Rewrite(rewriter), type_name("0"),
-          trace_call(NULL), type(NULL)
+    TraceParam(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, Rewriter *rewriter)
+        : Out(out), Diags(_Diags), ast(_ast), Rewrite(rewriter), type_name("0"), trace_call(NULL), type(NULL)
     {
         clear();
         NonInlineTraceRepresentDiag
-            = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                    "non inline __repr__ may isn't supported");
-        MultipleReprCallsDiag = Diags.getCustomDiagID(
-            DiagnosticsEngine::Error, "a __repr__ function may have only a "
-                                      "single call to REPR() (showing last "
-                                      "call to REPR)");
-        EmptyLiteralStringDiag = Diags.getCustomDiagID(
-            DiagnosticsEngine::Warning,
-            "Empty literal string in trace has no effect");
+            = Diags.getCustomDiagID(DiagnosticsEngine::Error, "non inline __repr__ may isn't supported");
+        MultipleReprCallsDiag
+            = Diags.getCustomDiagID(DiagnosticsEngine::Error, "a __repr__ function may have only a "
+                                                              "single call to REPR() (showing last "
+                                                              "call to REPR)");
+        EmptyLiteralStringDiag = Diags.getCustomDiagID(DiagnosticsEngine::Warning,
+                                                       "Empty literal string in trace has no effect");
     }
 
     bool fromType(QualType type, bool fill_unknown);
     bool fromExpr(const Expr *E, bool deref_pointer);
+    bool calcSimpleValueRepr();
     unsigned long flags;
     std::string const_str;
     std::string expression;
     std::string size_expression;
-    std::string type_name;
+    std::string type_name;    
     std::string param_name;
+    std::string format_str;
+    std::string expr_param;
     TraceCall *trace_call;
     bool is_pointer;
     bool is_reference;
@@ -105,13 +104,14 @@ public:
         flags = source.flags;
         expression = source.expression;
         size_expression = source.size_expression;
+        format_str = source.format_str;
+        expr_param = source.expr_param;
         size = source.size;
         trace_call = source.trace_call;
-        Diags = source.Diags;
-
-        type_name = type_name;
-        is_pointer = is_pointer;
-        is_reference = is_reference;
+        Diags = source.Diags;        
+        type_name = source.type_name;
+        is_pointer = source.is_pointer;
+        is_reference = source.is_reference;
         return *this;
     }
 
@@ -203,9 +203,8 @@ public:
     }
     bool isSimple()
     {
-        if (flags & (TRACE_PARAM_FLAG_ENUM | TRACE_PARAM_FLAG_NUM_8
-                     | TRACE_PARAM_FLAG_NUM_16 | TRACE_PARAM_FLAG_NUM_32
-                     | TRACE_PARAM_FLAG_NUM_64 | TRACE_PARAM_FLAG_FP)
+        if (flags & (TRACE_PARAM_FLAG_ENUM | TRACE_PARAM_FLAG_NUM_8 | TRACE_PARAM_FLAG_NUM_16
+                     | TRACE_PARAM_FLAG_NUM_32 | TRACE_PARAM_FLAG_NUM_64 | TRACE_PARAM_FLAG_FP)
             && !(flags & TRACE_PARAM_FLAG_VARRAY)) {
             return true;
         } else {
@@ -237,6 +236,18 @@ public:
         const_str = str;
     }
 
+    /** return a string used to help decide printf what type it is */
+    std::string getFormatStr()
+    {
+        return format_str;
+    }
+
+    /** get a parameter for printf */
+    std::string getExprParam()
+    {
+        return expr_param;
+    }
+
 private:
     std::string getLiteralString(const Expr *expr);
     void referenceType(const Type *type);
@@ -256,13 +267,12 @@ private:
 class TraceCall
 {
 public:
-    TraceCall(llvm::raw_ostream &out, DiagnosticsEngine &_Diags,
-              ASTContext &_ast, Rewriter *rewriter)
-        : method_generated(false), trace_call_name("tracelog"), ast(_ast),
-          Diags(_Diags), Out(out), Rewrite(rewriter)
+    TraceCall(llvm::raw_ostream &out, DiagnosticsEngine &_Diags, ASTContext &_ast, Rewriter *rewriter)
+        : method_generated(false), trace_call_name("tracelog"), ast(_ast), Diags(_Diags), Out(out),
+          Rewrite(rewriter)
     {
-        UnknownTraceParamDiag = Diags.getCustomDiagID(
-            DiagnosticsEngine::Error, "Unsupported trace parameter type");
+        UnknownTraceParamDiag
+            = Diags.getCustomDiagID(DiagnosticsEngine::Error, "Unsupported trace parameter type");
     }
 
     bool fromCallExpr(CallExpr *exp);
@@ -278,8 +288,8 @@ public:
     {
         kind = _kind;
     }
-    std::string getExpansion();    
-
+    std::string getExpansion();
+    std::string getParameterListStr();
     bool method_generated;
     std::string trace_call_name;
     std::vector<TraceParam> args;
@@ -296,18 +306,14 @@ private:
 
     unsigned UnknownTraceParamDiag;
 
-    std::string getLiteralString(const Expr *expr);        
+    std::string getLiteralString(const Expr *expr);
     void replaceExpr(const Expr *expr, std::string replacement);
 
     std::string getTypeDefinitionExternDeclratations();
     std::string genMIN(std::string &a, std::string &b);
 
-    std::string constlength_writeSimpleValue(std::string &expression,
-                                             std::string &type_name,
-                                             bool is_pointer, bool is_reference,
-                                             unsigned int size,
-                                             const Type *type);    
-
+    std::string constlength_writeSimpleValue(std::string &expression, std::string &type_name, bool is_pointer,
+                                             bool is_reference, unsigned int size, const Type *type);    
 
     bool constantSizeTrace();
     void unknownTraceParam(const Expr *trace_param);

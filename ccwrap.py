@@ -31,6 +31,7 @@ print 'plugin_path = %s' % (plugin_path, )
 print 'clang_path = %s' % (clang_path, )
 
 traceUtil_h = os.path.join(os.path.dirname(sys.argv[0]), "include/traceUtil.h")
+includePath = os.path.join(os.path.dirname(sys.argv[0]), "include")
 cppPrepend = open(traceUtil_h,"r").readlines()
 
 use_includes = True
@@ -342,6 +343,7 @@ def main():
     cpp_args.extend(['-D', '__TRACE_INSTRUMENTATION'])    
     # cpp_args.extend(["-include", os.path.join(os.path.dirname(sys.argv[0]),  "include/trace_lib.h")])
     # cpp_args.extend(["-include", os.path.join(os.path.dirname(sys.argv[0]),  "include/trace_user.h")])
+    #cpp_args.extend(["-I",includePath])
     if use_includes:
         cpp_args.extend(["-include", traceUtil_h])
     print 'cpp_args: ', " ".join(cpp_args)

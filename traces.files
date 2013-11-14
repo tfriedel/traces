@@ -31,3 +31,4 @@ trace_instrumentor/TraceCall.h
 trace_reader/simple_trace_reader.c
 traceUtil.cpp
 include/traceUtil.h
+include/traceUtil.h
