@@ -43,35 +43,21 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include <string>
 #include <set>
 
-#define TRACE_LOG                                                                                            \
-    std::string("std::cout << std::setw(25) << \"" + cpp_filename                                            \
-                + ": \" << std::string(4*trace_get_nesting_level()%40, ' "                                   \
-                  "')")
-#define TRACING_ENABLED std::string("true")
-#define TRACE_ENDL std::string(" << std::endl; ")
 
-//#define TRACE_FUNC_ENTRY(funcName, lineNo, logText)                                                        \
-//    std::string("static int traceCounter_line_") + numberToStr(lineNo)                                     \
-//        + " = 0; bool entry_was_logged=false;\n" + std::string("if (") + TRACING_ENABLED + ")" + "{\n"     \
-//        + +"if (traceCounter_line_" + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"      \
-//        + TRACE_LOG + std::string("<< \"--> ") + funcName + std::string("(\" << ") + logText               \
-//        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")               \
-//        + "}trace_increment_nesting_level();}"
+#define TRACING_ENABLED std::string("true")
+
 
 #define TRACE_FUNC_ENTRY(funcName, lineNo, logText, ...)                                                     \
     std::string("static int traceCounter_line_") + numberToStr(lineNo)                                       \
         + " = 0;\n bool entry_was_logged=false;\n" + "tracer::trace_log_func_entry(\"" + cpp_filename        \
-        + "\", \"" + funcName + "\" ,\"" + logText + "\", " + numberToStr(lineNo) + ", &entry_was_logged, "  \
+        + "\", \"" + funcName + "\" ,\"" + logText + "\", &entry_was_logged, "  \
         + "&traceCounter_line_" + numberToStr(lineNo) + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__    \
         + ");\n"
-//        +"if (traceCounter_line_" + numberToStr(lineNo) + "++ < defaultMaxLogCallsPerFunction) {\n"        \
-//        + TRACE_LOG + std::string("<< \"--> ") + funcName + std::string("(\" << ") + logText               \
-//        + std::string("<< \")\"") + TRACE_ENDL + std::string("\nentry_was_logged = true;\n")               \
-//        + "}trace_increment_nesting_level();}"
+
 
 #define TRACE_FUNC_EXIT(funcName, lineNo, logText, ...)                                                      \
-    "tracer::trace_log_func_exit(\"" + cpp_filename + "\", \"" + funcName + "\" ,\"" + logText + "\", "      \
-        + numberToStr(lineNo) + ", &entry_was_logged, " + "&traceCounter_line_" + numberToStr(lineNo)        \
+    "tracer::trace_log_func_exit(\"" + cpp_filename + "\", \"" + funcName + "\" ,\"" + logText      \
+       + "\", &entry_was_logged"  \
         + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");\n"
 
 using namespace clang;
@@ -262,6 +248,23 @@ SourceLocation getNextSemicolon(const clang::Stmt *S, const clang::SourceManager
         case BACKSLASH_DOUBLEQUOTE:
             state = DOUBLEQUOTE;
             break;
+        case SEMICOLON:
+            switch (c) {
+            case ';':
+                state = SEMICOLON;
+                break;
+            case '"':
+                state = DOUBLEQUOTE;
+                break;
+            case '\'':
+                state = SINGLEQUOTE;
+                break;
+            case '\\':
+                state = BACKSLASH;
+                break;
+            default:
+                break;
+            }
         }
         if (state != SEMICOLON) {
             loc = loc.getLocWithOffset(1);
@@ -536,7 +539,7 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std
                 }
             }
             if (unhandledType) {
-                serialized << "\"[unhandledType :" + type_name + "]\"";
+                serialized << "\"[unhandledType: " + type_name + "]\"";
             } else if (integerType || floatingPointType) {
                 serialized << "(";
                 std::stringstream new_expression;

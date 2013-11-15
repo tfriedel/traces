@@ -1,34 +1,32 @@
 #ifndef TRACE_UTIL_H
 #define TRACE_UTIL_H
-// extern __thread 
+// extern __thread
 
 #define TRACE_CURRENT_FILENAME __TRACE_SOURCE_FILENAME
 
-static int defaultMaxLogCallsPerFunction = 10;
+static int defaultMaxLogCallsPerFunction = 10000000;
 
-#include "traceUtil.h"
-
+#ifdef __ADSPBLACKFIN__
+#define __attribute__(x)
+#endif
 
 namespace tracer
 {
-static void trace_increment_nesting_level(void);
-static void trace_decrement_nesting_level(void);
-static unsigned short trace_get_nesting_level(void);
+void trace_increment_nesting_level(void);
+void trace_decrement_nesting_level(void);
+unsigned short trace_get_nesting_level(void);
 
-
-void trace_log_func_entry(char *cpp_filename, char *funcName, char *logText, unsigned int lineNo,
+void trace_log_func_entry(const char *cpp_filename, const char *funcName, const char *logText,
                           bool *entry_was_logged, int *traceCounter, int defaultMaxLogCallsPerFunction, ...);
-void trace_log_func_exit(char *cpp_filename, char *funcName, char *logText, unsigned int lineNo,
-                          bool *entry_was_logged, int *traceCounter, int defaultMaxLogCallsPerFunction, ...);
+void trace_log_func_exit(const char *cpp_filename, const char *funcName, const char *logText,
+                         bool *entry_was_logged, int defaultMaxLogCallsPerFunction, ...);
 }
-
 
 //#include <iosfwd>
 //#include <memory>
 
-
 //// allows printing of variables of any type
-//namespace outputter_any_detail
+// namespace outputter_any_detail
 //{
 //    // your generic output function
 //    template <typename T>
@@ -137,8 +135,8 @@ void trace_log_func_exit(char *cpp_filename, char *funcName, char *logText, unsi
 //}
 
 //// construct an outputter_any
-//template <typename T>
-//outputter_any_detail::outputter_any<T> output_any(const T& pX)
+// template <typename T>
+// outputter_any_detail::outputter_any<T> output_any(const T& pX)
 //{
 //    return outputter_any_detail::outputter_any<T>(pX);
 //}
