@@ -58,7 +58,7 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #define TRACE_FUNC_EXIT(funcName, lineNo, logText, ...)                                                      \
     "tracer::trace_log_func_exit(\"" + cpp_filename + "\", \"" + funcName + "\" ,\"" + logText      \
        + "\", &entry_was_logged"  \
-        + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");\n"
+        + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");"
 
 using namespace clang;
 
