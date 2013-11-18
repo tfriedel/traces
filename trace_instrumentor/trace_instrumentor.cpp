@@ -37,28 +37,28 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
 #include "trace_lib.h"
 
 #include <sstream>
+#include <fstream>
 #include <string>
 #include <iostream>
 #include <vector>
 #include <string>
 #include <set>
-
+#include <algorithm>
+#include <functional>
+#include <cctype>
+#include <locale>
 
 #define TRACING_ENABLED std::string("true")
-
 
 #define TRACE_FUNC_ENTRY(funcName, lineNo, logText, ...)                                                     \
     std::string("static int traceCounter_line_") + numberToStr(lineNo)                                       \
         + " = 0;\n bool entry_was_logged=false;\n" + "tracer::trace_log_func_entry(\"" + cpp_filename        \
-        + "\", \"" + funcName + "\" ,\"" + logText + "\", &entry_was_logged, "  \
-        + "&traceCounter_line_" + numberToStr(lineNo) + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__    \
-        + ");\n"
-
+        + "\", \"" + funcName + "\" ,\"" + logText + "\", &entry_was_logged, " + "&traceCounter_line_"       \
+        + numberToStr(lineNo) + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");\n"
 
 #define TRACE_FUNC_EXIT(funcName, lineNo, logText, ...)                                                      \
-    "tracer::trace_log_func_exit(\"" + cpp_filename + "\", \"" + funcName + "\" ,\"" + logText      \
-       + "\", &entry_was_logged"  \
-        + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");"
+    "tracer::trace_log_func_exit(\"" + cpp_filename + "\", \"" + funcName + "\" ,\"" + logText               \
+        + "\", &entry_was_logged" + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");"
 
 using namespace clang;
 
@@ -67,6 +67,8 @@ namespace
 // static bool printFlags = true;
 static bool printFlags = false;
 static std::string cpp_filename = "";
+static std::string blacklist_filename = "";
+static std::vector<std::string> blackList;
 
 static const Type *get_expr_type(const Expr *expr)
 {
@@ -76,6 +78,12 @@ static const Type *get_expr_type(const Expr *expr)
 static inline std::string numberToStr(int Number)
 {
     return static_cast<std::ostringstream *>(&(std::ostringstream() << Number))->str();
+}
+
+// trim from end
+static inline std::string &rtrim(std::string &s) {
+        s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
+        return s;
 }
 
 std::string castTo(LangOptions const &langOpts, std::string orig_expr, std::string cast_type)
@@ -1108,7 +1116,14 @@ static bool shouldInstrumentFunctionDecl(const FunctionDecl *D, bool whitelistEx
         if (D->isTrivial() || D->isHidden() || D->isRecord() || D->hasTrivialBody()) {
             return false;
         }
-        // @todo: is this function defined in namespace std
+    }
+
+    for (std::string entry : blackList) {
+        std::size_t found = D->getQualifiedNameAsString().find(entry);
+        if (found!=std::string::npos)
+        {
+            return false;
+        }
     }
 
     if (whitelistExceptions) {
@@ -1145,10 +1160,11 @@ public:
     LangOptions langOpts;
     bool whitelistExceptions;
 
+
     DeclIterator(llvm::raw_ostream &xOut, DiagnosticsEngine &_Diags, ASTContext &xAst, Rewriter *rewriter,
                  SourceManager *sm, const LangOptions &_langOpts)
         : Out(xOut), Diags(_Diags), ast(xAst), Rewrite(rewriter), SM(sm), langOpts(_langOpts),
-          whitelistExceptions(false) {};
+           whitelistExceptions(false) {};
     void VisitDeclContext(DeclContext *DC, bool Indent = true);
     void VisitTranslationUnitDecl(TranslationUnitDecl *D);
     void VisitTypedefDecl(TypedefDecl *D);
@@ -2501,6 +2517,7 @@ public:
     SourceManager *SM;
     std::string InFileName;
     CompilerInstance *compilerInstance;
+    std::vector<std::string> backList;
 
     PreCompilationLogsConsumer(StringRef inFile, raw_ostream *out, CompilerInstance &CI);
 
@@ -2577,12 +2594,47 @@ protected:
 
     bool ParseArgs(const CompilerInstance &CI, const std::vector<std::string> &args)
     {
-        if (args.size()) {
-            // current filename
-            cpp_filename = args[0];
-        } else {
+        unsigned int count = args.size();
+        llvm::errs() << "ParseArgs " << count << "\n";
+        for (unsigned int i = 0; i < count; i++) {
+            std::string s = args[i];
+            llvm::errs() << "trace-instrument arg = " << s << "\n";
+
+            if (s.substr(0, 13) == "cpp_filename=") {
+                cpp_filename = s.substr(13);
+            } else if (s.substr(0, 19) == "blacklist_filename=") {
+                blacklist_filename = s.substr(19);
+                // read blacklist file
+                if ("" != blacklist_filename) {
+                    std::ifstream InStream;
+                    std::string line;
+
+                    InStream.open(blacklist_filename);
+                    std::getline(InStream,line);
+                    while (!InStream.eof())    // check if not at end-of-file (eof)
+                    {
+                        line = rtrim(line);
+                        std::cout << line << std::endl;     // output the line
+                        blackList.push_back(line);
+                        std::getline(InStream,line);   // read next line
+                    }
+                }
+            } else if (s == "help") {
+                PrintHelp(llvm::errs());
+                return false;
+            } else {
+                PrintHelp(llvm::errs());
+                DiagnosticsEngine &D = CI.getDiagnostics();
+                unsigned DiagID
+                    = D.getCustomDiagID(DiagnosticsEngine::Error, "invalid argument '" + args[i] + "'");
+                D.Report(DiagID);
+                return false;
+            }
+        }
+        if ("" == cpp_filename) {
             cpp_filename = InFile.str();
         }
+
         return true;
     }
 

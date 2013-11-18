@@ -37,7 +37,7 @@ interactive_reader/_trace_parser_ctypes.py: include/trace_parser.h
 	$(XML2PY) -k f -k e -k s _trace_parser_ctypes.xml > interactive_reader/_trace_parser_ctypes.py
 	rm _trace_parser_ctypes.xml
 
-trace_instrumentor/trace_instrumentor.o: CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags) -Iinclude/ -I/home/friedel/opt/clang+llvm-3.1-x86_64-linux-ubuntu-11.10/include
+trace_instrumentor/trace_instrumentor.o: CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags) -Iinclude/ -I/home/friedel/opt/clang+llvm-3.1-x86_64-linux-ubuntu-11.10/include -std=c++0x
 trace_instrumentor/trace_instrumentor.o: LDFLAGS := $(shell $(LLVM_CONFIG) --libs --ldflags)
 trace_instrumentor: trace_instrumentor/trace_instrumentor.o
 	gcc $(LDFLAGS) -shared trace_instrumentor/trace_instrumentor.o  -o trace_instrumentor/trace_instrumentor.so

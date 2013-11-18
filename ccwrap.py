@@ -60,6 +60,7 @@ def translate(
     language,
     arch_triplet,
     cflags,
+    blacklist_filename = ""
     ):
 
     if language == 'c++':
@@ -95,7 +96,10 @@ def translate(
 
     args.extend(arch_triplet)
     args.extend(cflags)
-    args.extend(['-load', plugin_path, '-plugin', 'trace-instrument', "-plugin-arg-trace-instrument", orig_c_file_basename])
+    args.extend(['-load', plugin_path, '-plugin', 'trace-instrument', "-plugin-arg-trace-instrument", 
+        "cpp_filename="+orig_c_file_basename])
+    if (blacklist_filename != ""):
+        args.extend(["-plugin-arg-trace-instrument","blacklist_filename="+blacklist_filename])
     try:
         print 'running clang :', " ".join(args)
         output = subprocess.check_output(args, stderr=subprocess.STDOUT)
@@ -115,6 +119,7 @@ def translate_no_gcc(
     language,
     arch_triplet,
     cflags,
+    blacklist_filename = ""
     ):
 
     if language == 'c++':
@@ -154,8 +159,15 @@ def translate_no_gcc(
         '-Xclang',
         "-plugin-arg-trace-instrument",
         '-Xclang',
-        orig_c_file_basename
+        "cpp_filename="+orig_c_file_basename        
         ])
+    if (blacklist_filename != ""):
+        args.extend([
+            '-Xclang',
+            "-plugin-arg-trace-instrument",
+            '-Xclang',
+            'blacklist_filename='+blacklist_filename])
+
     try:
         print 'running clang :', ' '.join(args)
         output = subprocess.check_output(args, stderr=subprocess.STDOUT)
@@ -196,11 +208,12 @@ def maybe_translate(
     language,
     arch_triplet,
     cflags,
+    blacklist_filename = ""
     ):
 
     try:
         return translate(orig_c_file_basename, pp_file, out_pp_file, language, arch_triplet,
-                         cflags)
+                         cflags, blacklist_filename )
     except Error, e:
         print e.args[0]
         return -1
@@ -213,11 +226,12 @@ def maybe_translate_no_gcc(
     language,
     arch_triplet,
     cflags,
+    blacklist_filename = ""
     ):
 
     try:
         return translate_no_gcc(orig_c_file_basename, pp_file, out_pp_file, language,
-                                arch_triplet, cflags)
+                                arch_triplet, cflags, blacklist_filename)
     except Error, e:
         print e.args[0]
         return -1
@@ -275,6 +289,12 @@ def preProcess(filename, outputfilename):
 
 def main():
     args = sys.argv[1:]
+    blacklist_filename = ""        
+    if '-blacklist_filename' in args:
+        bindex = args.index("-blacklist_filename")
+        blacklist_filename = args[bindex+1]
+        args = args[:bindex]+args[bindex+2:]
+
     if '-c' not in args:
         return spawn(args)
         #return ldmodwrap_main()
@@ -304,6 +324,7 @@ def main():
         o_file = cpp_args[o_index]
         pp_file = o_file + '.pp'
         cpp_args[o_index] = pp_file
+
 
     outputdir = os.path.join(os.path.split(os.path.abspath(o_file))[0],
                              'transformed')    
@@ -355,7 +376,7 @@ def main():
     clang_args[clang_args.index(pp_file)] = output_c_file
     cpp_args.extend(['-C'])
     clang_ret = maybe_translate_no_gcc(orig_c_file_basename, c_file, out_pp_file + '.out',
-            language, get_arch_triplet(args[0]), clang_args)
+            language, get_arch_triplet(args[0]), clang_args, blacklist_filename)
     preProcess(output_c_file, output_c_file)
     #if clang_ret != 0:
     #    return -1
@@ -366,7 +387,7 @@ def main():
 
     try:
         clang_ret = maybe_translate(orig_c_file_basename, pp_file, out_pp_file, language,
-                                    get_arch_triplet(args[0]), cflags)
+                                    get_arch_triplet(args[0]), cflags, blacklist_filename)
         if clang_ret != 0:
             return -1
 
