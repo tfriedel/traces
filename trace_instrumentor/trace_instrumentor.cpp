@@ -1106,8 +1106,7 @@ bool TraceCall::constantSizeTrace(void)
 }
 
 static bool shouldInstrumentFunctionDecl(const FunctionDecl *D, bool whitelistExceptions)
-{
-    //@todo: implement filters
+{    
     if (D->isInlined()) {
         return false;
         if (!(D->isCXXClassMember() || D->isCXXInstanceMember())) {
@@ -1119,7 +1118,13 @@ static bool shouldInstrumentFunctionDecl(const FunctionDecl *D, bool whitelistEx
     }
 
     for (std::string entry : blackList) {
+        // search in filename and in fully qualified function name
         std::size_t found = D->getQualifiedNameAsString().find(entry);
+        if (found!=std::string::npos)
+        {
+            return false;
+        }
+        found = cpp_filename.find(entry);
         if (found!=std::string::npos)
         {
             return false;
@@ -2601,7 +2606,7 @@ protected:
             llvm::errs() << "trace-instrument arg = " << s << "\n";
 
             if (s.substr(0, 13) == "cpp_filename=") {
-                cpp_filename = s.substr(13);
+                cpp_filename = s.substr(13);                
             } else if (s.substr(0, 19) == "blacklist_filename=") {
                 blacklist_filename = s.substr(19);
                 // read blacklist file
@@ -2610,13 +2615,13 @@ protected:
                     std::string line;
 
                     InStream.open(blacklist_filename);
-                    std::getline(InStream,line);
+
                     while (!InStream.eof())    // check if not at end-of-file (eof)
                     {
+                        std::getline(InStream,line);
                         line = rtrim(line);
                         std::cout << line << std::endl;     // output the line
                         blackList.push_back(line);
-                        std::getline(InStream,line);   // read next line
                     }
                 }
             } else if (s == "help") {
