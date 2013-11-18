@@ -1,0 +1,9 @@
+To instrument a QT project add this to your project file:
+# traces
+TRACES_ROOT_DIR = /home/friedel/dev-lib/traces
+BLACKLIST = /home/friedel/projects/tracesTest/blacklist.txt
+QMAKE_CXX = "$$TRACES_ROOT_DIR/ccwrap.py -blacklist_filename $$BLACKLIST $$QMAKE_CXX"
+QMAKE_LINK = $$QMAKE_CXX
+SOURCES += $$TRACES_ROOT_DIR/traceUtil.cpp
+INCLUDEPATH += $$TRACES_ROOT_DIR/include
+unix:LIBS += -lboost_thread
