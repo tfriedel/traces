@@ -5,7 +5,7 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
-#include <strstream>
+#include <sstream>
 
 namespace tracer {
 static const bool indent_using_nesting = false;

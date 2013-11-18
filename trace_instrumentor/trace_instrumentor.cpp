@@ -1268,8 +1268,7 @@ void DeclIterator::VisitEnumConstantDecl(EnumConstantDecl *D)
 void DeclIterator::VisitFunctionDecl(FunctionDecl *D)
 {
     std::string expansion;
-    std::string parameterlist;
-    std::cout << "--> VisitFunctionDecl()" << std::endl;
+    std::string parameterlist;    
     if (NULL != strstr(D->getQualifiedNameAsString().c_str(), "std::")) {
         return;
     }
@@ -1740,8 +1739,7 @@ void StmtIterator::VisitBreakStmt(BreakStmt *S)
 }
 
 void StmtIterator::VisitReturnStmt(ReturnStmt *S)
-{
-    std::cout << "--> VisitReturnStmt()" << std::endl;
+{    
     const FunctionDecl *FD = cast<FunctionDecl>(D);
 
     if (NULL != strstr(FD->getQualifiedNameAsString().c_str(), "std::")) {
