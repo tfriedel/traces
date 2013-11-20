@@ -576,10 +576,10 @@ bool TraceParam::calcSimpleValueRepr()
         if (type->isFloatingType()) {
             if (size==4) {
                 format_str = "%a";
-                expr_param = std::string("tracer::fl2bin{")+expression+"}.i";
+                expr_param = std::string("tracer::flt2bin(")+expression+")";
             } else if (size==8) {
                 format_str ="%lla";
-                expr_param = std::string("tracer::dbl2bin{")+expression+"}.i";
+                expr_param = std::string("tracer::dbl2bin(")+expression+")";
             } else {
                 assert(false);
             }
@@ -628,17 +628,17 @@ bool TraceParam::calcSimpleValueRepr()
                         std::stringstream new_expression;
                         if (size==4) {
                             format_str = "%a";
-                            new_expression << "tracer::fl2bin{";
+                            new_expression << "tracer::flt2bin(";
                         } else if (size==8) {
                             format_str ="%lla";
-                            new_expression << "tracer::dbl2bin{";
+                            new_expression << "tracer::dbl2bin(";
                         } else {
                             assert(false);
                         }
                         if (is_pointer) {
                             new_expression << "*";
                         }
-                        new_expression << expression << "}.i";
+                        new_expression << expression << ")";
                         expr_param_stream << new_expression.str();
                     } else if (pointeeType->isSignedIntegerType()) {
                         integerType = true;

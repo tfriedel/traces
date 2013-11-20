@@ -12,15 +12,27 @@ static int defaultMaxLogCallsPerFunction = 10000000;
 
 namespace tracer
 {
-typedef union _fl2bin {
+typedef union _flt2bin {
     float f;
     unsigned long long i;
-} fl2bin;
+} flt2bin_u;
 
 typedef union _dbl2bin {
     double f;
     unsigned long long i;
-} dbl2bin;
+} dbl2bin_u;
+
+inline long long flt2bin(float f) {
+    flt2bin_u f_u;
+    f_u.f = f;
+    return f_u.i;
+}
+
+inline long long dbl2bin(double f) {
+    dbl2bin_u f_u;
+    f_u.f = f;
+    return f_u.i;
+}
 
 void trace_increment_nesting_level(void);
 void trace_decrement_nesting_level(void);
