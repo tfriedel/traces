@@ -536,7 +536,7 @@ std::string TraceCall::constlength_writeSimpleValue(std::string &expression, std
                     const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
                     // if (BT->getKind() == BuiltinType::Double) {
                     if (BT->isFloatingPoint()) {
-                        int size = ast.getTypeSize(type) / 8;
+                        int size = ast.getTypeSize(pointeeType) / 8;
                         std::string type_name = QualType(pointeeType, 0).getAsString();
                         floatingPointType = true;
                     } else if (pointeeType->isIntegerType()) {
@@ -574,7 +574,15 @@ bool TraceParam::calcSimpleValueRepr()
     std::stringstream expr_param_stream;
     if (!is_reference && !is_pointer) {
         if (type->isFloatingType()) {
-            format_str = "%a";
+            if (size==4) {
+                format_str = "%a";
+                expr_param = std::string("tracer::fl2bin{")+expression+"}.i";
+            } else if (size==8) {
+                format_str ="%lla";
+                expr_param = std::string("tracer::dbl2bin{")+expression+"}.i";
+            } else {
+                assert(false);
+            }
         } else if (type->isCharType()) {
             if (type->isSignedIntegerType()) {
                 format_str = "%d";
@@ -614,10 +622,24 @@ bool TraceParam::calcSimpleValueRepr()
                     const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
                     // if (BT->getKind() == BuiltinType::Double) {
                     if (BT->isFloatingPoint()) {
-                        int size = ast.getTypeSize(type) / 8;
+                        size = ast.getTypeSize(pointeeType) / 8;
                         std::string type_name = QualType(pointeeType, 0).getAsString();
                         floatingPointType = true;
-                        format_str = "%a";
+                        std::stringstream new_expression;
+                        if (size==4) {
+                            format_str = "%a";
+                            new_expression << "tracer::fl2bin{";
+                        } else if (size==8) {
+                            format_str ="%lla";
+                            new_expression << "tracer::dbl2bin{";
+                        } else {
+                            assert(false);
+                        }
+                        if (is_pointer) {
+                            new_expression << "*";
+                        }
+                        new_expression << expression << "}.i";
+                        expr_param_stream << new_expression.str();
                     } else if (pointeeType->isSignedIntegerType()) {
                         integerType = true;
                         format_str = "%d";
@@ -632,7 +654,7 @@ bool TraceParam::calcSimpleValueRepr()
             if (unhandledType) {
                 expr_param_stream << "\"[unhandledType :" + type_name + "]\"";
                 format_str = "%s";
-            } else if (integerType || floatingPointType) {
+            } else if (integerType) {
                 expr_param_stream << "(";
                 std::stringstream new_expression;
                 if (is_pointer) {
@@ -2618,8 +2640,10 @@ protected:
                     {
                         std::getline(InStream,line);
                         line = rtrim(line);
-                        std::cout << line << std::endl;     // output the line
-                        blackList.push_back(line);
+                        if (line.length()>0) {
+                            std::cout << line << std::endl;     // output the line
+                            blackList.push_back(line);
+                        }
                     }
                 }
             } else if (s == "help") {

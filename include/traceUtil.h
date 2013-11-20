@@ -12,6 +12,16 @@ static int defaultMaxLogCallsPerFunction = 10000000;
 
 namespace tracer
 {
+typedef union _fl2bin {
+    float f;
+    unsigned long long i;
+} fl2bin;
+
+typedef union _dbl2bin {
+    double f;
+    unsigned long long i;
+} dbl2bin;
+
 void trace_increment_nesting_level(void);
 void trace_decrement_nesting_level(void);
 unsigned short trace_get_nesting_level(void);

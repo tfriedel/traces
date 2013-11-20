@@ -6,7 +6,7 @@
 #include <iomanip>
 #include <string>
 #include <sstream>
-
+#include "snprintf.h"
 namespace tracer {
 static const bool indent_using_nesting = false;
 static const bool print_trace_counter = false;
@@ -66,7 +66,7 @@ inline unsigned short trace_get_nesting_level(void)
 static std::string float_to_hex(float f)
 {
     char buff[100];
-    sprintf(buff, "%a", f);
+    snprintf(buff, 100, "%a", f);
     std::string buffAsStdStr = buff;
     return buffAsStdStr;
 }
@@ -76,7 +76,7 @@ static std::string float_to_hex(float f)
 static std::string float_to_hex(double d)
 {
     char buff[100];
-    sprintf(buff, "%a", d);
+    snprintf(buff, 100, "%a", d);
     std::string buffAsStdStr = buff;
     return buffAsStdStr;
 }
@@ -102,7 +102,7 @@ void trace_log_func_entry(const char *cpp_filename, const char *funcName, const 
         int cx;
         va_list args;
         va_start(args, defaultMaxLogCallsPerFunction);
-        cx = vsprintf(buffer, logText, args);
+        cx = portable_vsnprintf(buffer, bufferSize, logText, args);
         va_end(args);
         std::string indent_spaces = "";
         if (indent_using_nesting) {
@@ -110,7 +110,7 @@ void trace_log_func_entry(const char *cpp_filename, const char *funcName, const 
         }
         std::string traceCounterStr = "";
         if (print_trace_counter) {
-            std::stringstream ss;
+            std::ostringstream ss;
             ss << "#" << *traceCounter << " ";
             traceCounterStr = ss.str();
         }
@@ -135,7 +135,7 @@ void trace_log_func_exit(const char *cpp_filename, const char *funcName, const c
         int cx;
         va_list args;
         va_start(args, defaultMaxLogCallsPerFunction);
-        cx = vsprintf(buffer, logText, args);
+        portable_vsnprintf(buffer, bufferSize, logText, args);
         va_end(args);
         std::string indent_spaces = "";
         if (indent_using_nesting) {
