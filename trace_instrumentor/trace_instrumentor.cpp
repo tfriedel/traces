@@ -54,18 +54,22 @@ Copyright 2012 Yotam Rubin <yotamrubin@gmail.com>
     std::string("static int traceCounter_line_") + numberToStr(lineNo)                                       \
         + " = 0;\n bool entry_was_logged=false;\n" + "tracer::trace_log_func_entry(\"" + cpp_filename        \
         + "\", \"" + funcName + "\" ,\"" + logText + "\", &entry_was_logged, " + "&traceCounter_line_"       \
-        + numberToStr(lineNo) + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");\n"
+        + numberToStr(lineNo) + ", tracer::default_maxLogCallsPerFunction, " + __VA_ARGS__ + ");\n"
 
 #define TRACE_FUNC_EXIT(funcName, lineNo, logText, ...)                                                      \
     "tracer::trace_log_func_exit(\"" + cpp_filename + "\", \"" + funcName + "\" ,\"" + logText               \
-        + "\", &entry_was_logged" + ", defaultMaxLogCallsPerFunction, " + __VA_ARGS__ + ");"
+        + "\", &entry_was_logged" + ", tracer::default_maxLogCallsPerFunction, " + __VA_ARGS__ + ");"
 
 using namespace clang;
 
 namespace
 {
 // static bool printFlags = true;
-static bool printFlags = false;
+const static bool printFlags = false;
+// return values that include function calls will be calculated twice if ignore_side_effects is true
+// else their values will not be printed.
+// @todo implement storing return values in newly created variables first
+const static bool ignore_side_effects = true;
 static std::string cpp_filename = "";
 static std::string blacklist_filename = "";
 static std::vector<std::string> blackList;
@@ -1800,7 +1804,10 @@ void StmtIterator::VisitReturnStmt(ReturnStmt *S)
         goto expand;
     }
 
-    if (trace_param.fromExpr(S->getRetValue(), false) && !(S->getRetValue()->HasSideEffects(ast))) {
+    if (trace_param.fromExpr(S->getRetValue(), false) &&
+            !S->getRetValue()->isNullPointerConstant(ast,
+                     clang::Expr::NullPointerConstantValueDependence::NPC_NeverValueDependent ) &&
+            (ignore_side_effects || !(S->getRetValue()->HasSideEffects(ast)))) {
         trace_call.addTraceParam(trace_param);
         VisitStmt(S);
     }
