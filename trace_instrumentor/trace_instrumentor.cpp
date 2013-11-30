@@ -577,6 +577,7 @@ bool TraceParam::calcSimpleValueRepr()
 {
     std::stringstream expr_param_stream;
     if (!is_reference && !is_pointer) {
+        const BuiltinType *BT = type->getAs<BuiltinType>();
         if (type->isFloatingType()) {
             if (size==4) {
                 format_str = "%a";
@@ -594,10 +595,18 @@ bool TraceParam::calcSimpleValueRepr()
                 format_str = "%u";
             }
         } else {
-            if (type->isSignedIntegerType()) {
-                format_str = "%d";
-            } else if (type->isUnsignedIntegerType()) {
-                format_str = "%u";
+            if (type->isSignedIntegerType()) {                                    
+                if (BT->getKind() == BuiltinType::LongLong) {
+                    format_str = "%lld";
+                } else {
+                    format_str = "%d";
+                }
+            } else if (type->isUnsignedIntegerType()) {                                    
+                if (BT->getKind() == BuiltinType::ULongLong) {
+                    format_str = "%llu";
+                } else {
+                    format_str = "%u";
+                }
             } else {
                 format_str = "%s";
                 expr_param = "\"unhandled basic type\"";
@@ -623,10 +632,10 @@ bool TraceParam::calcSimpleValueRepr()
                     expr_param_stream << "\"[!(pointeeType->isBuiltinType())]\"";
                     unhandledType = true;
                 } else {
-                    const BuiltinType *BT = pointeeType->getAs<BuiltinType>();
+                    const BuiltinType *BT = pointeeType->getAs<BuiltinType>();                    
                     // if (BT->getKind() == BuiltinType::Double) {
-                    if (BT->isFloatingPoint()) {
-                        size = ast.getTypeSize(pointeeType) / 8;
+                    size = ast.getTypeSize(pointeeType) / 8;
+                    if (BT->isFloatingPoint()) {                        
                         std::string type_name = QualType(pointeeType, 0).getAsString();
                         floatingPointType = true;
                         std::stringstream new_expression;
@@ -646,10 +655,18 @@ bool TraceParam::calcSimpleValueRepr()
                         expr_param_stream << new_expression.str();
                     } else if (pointeeType->isSignedIntegerType()) {
                         integerType = true;
-                        format_str = "%d";
+                        if (BT->getKind() == BuiltinType::LongLong) {
+                            format_str = "%lld";
+                        } else {
+                            format_str = "%d";
+                        }
                     } else if (pointeeType->isUnsignedIntegerType()) {
                         integerType = true;
-                        format_str = "%u";
+                        if (BT->getKind() == BuiltinType::ULongLong) {
+                            format_str = "%llu";
+                        } else {
+                            format_str = "%u";
+                        }
                     } else {
                         unhandledType = true;
                     }
