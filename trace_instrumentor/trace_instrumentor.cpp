@@ -598,12 +598,16 @@ bool TraceParam::calcSimpleValueRepr()
             if (type->isSignedIntegerType()) {                                    
                 if (BT->getKind() == BuiltinType::LongLong) {
                     format_str = "%lld";
+                } else if (BT->getKind() == BuiltinType::Long) {
+                    format_str = "%ld";
                 } else {
                     format_str = "%d";
                 }
             } else if (type->isUnsignedIntegerType()) {                                    
                 if (BT->getKind() == BuiltinType::ULongLong) {
                     format_str = "%llu";
+                } else if (BT->getKind() == BuiltinType::ULong) {
+                    format_str = "%lu";
                 } else {
                     format_str = "%u";
                 }
@@ -657,6 +661,8 @@ bool TraceParam::calcSimpleValueRepr()
                         integerType = true;
                         if (BT->getKind() == BuiltinType::LongLong) {
                             format_str = "%lld";
+                        } else if (BT->getKind() == BuiltinType::Long) {
+                            format_str = "%ld";
                         } else {
                             format_str = "%d";
                         }
@@ -664,6 +670,8 @@ bool TraceParam::calcSimpleValueRepr()
                         integerType = true;
                         if (BT->getKind() == BuiltinType::ULongLong) {
                             format_str = "%llu";
+                        } else if (BT->getKind() == BuiltinType::ULong) {
+                            format_str = "%lu";
                         } else {
                             format_str = "%u";
                         }
@@ -1162,15 +1170,17 @@ static bool shouldInstrumentFunctionDecl(const FunctionDecl *D, bool whitelistEx
 
     for (std::string entry : blackList) {
         // search in filename and in fully qualified function name
-        std::size_t found = D->getQualifiedNameAsString().find(entry);
-        if (found!=std::string::npos)
-        {
-            return false;
-        }
-        found = cpp_filename.find(entry);
-        if (found!=std::string::npos)
-        {
-            return false;
+        if (entry.size()>0 && entry[0] != ';') {
+            std::size_t found = D->getQualifiedNameAsString().find(entry);
+            if (found!=std::string::npos)
+            {
+                return false;
+            }
+            found = cpp_filename.find(entry);
+            if (found!=std::string::npos)
+            {
+                return false;
+            }
         }
     }
 
